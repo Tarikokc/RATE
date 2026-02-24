@@ -1,4 +1,4 @@
-<div class="page">
+<!-- <div class="page">
   <header class="topbar">
     <div class="left">
       <div class="h1row"><span class="sq"></span><h1>Control Panel</h1></div>
@@ -59,7 +59,7 @@
     <section class="sensor">
       <h3>État du capteur</h3>
       <div class="srow">
-        <span class="name">ESP8266-1:</span>
+        <span class="name">Raspbery PI 5</span>
         <span class="badge" [class.ok]="systemActive">{{ systemActive ? '✓ Connecté' : '✗ Déconnecté' }}</span>
       </div>
       <p class="ts">Dernière mesure: {{ fmt(lastMesure?.timestamp) }}</p>
@@ -68,4 +68,195 @@
   } @else {
     <div class="placeholder">Section {{ activeTab }} — à venir</div>
   }
+</div> -->
+<div class="page">
+
+  <!-- Header -->
+  <header class="topbar">
+    <div class="left">
+      <div class="h1row"><span class="sq"></span><h1>Control Panel</h1></div>
+      <a routerLink="/" class="back">← Retour au Dashboard</a>
+    </div>
+    <div class="right">
+      <div class="sys" [class.online]="systemActive">
+        <span class="dot"></span>{{ systemActive ? 'Système actif' : 'Hors ligne' }}
+      </div>
+      <button class="pill" (click)="exportCSV()">📄 CSV</button>
+      <button class="pill" (click)="exportJSON()">📄 JSON</button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="tabs">
+    @for (t of tabs; track t.id) {
+      <button class="tab" [class.active]="activeTab === t.id" (click)="activeTab = t.id">
+        {{ t.icon }} {{ t.label }}
+      </button>
+    }
+  </nav>
+  <div class="sep"></div>
+
+  <!-- ═══ SYSTÈME ═══ -->
+  @if (activeTab === 'systeme') {
+    <section class="grid">
+      <article class="card">
+        <h3>Mode Opérationnel</h3>
+        <div class="mode">
+          <button class="m" [class.on]="mode === 'auto'"   (click)="mode = 'auto'">AUTO 🤖</button>
+          <button class="m" [class.on]="mode === 'manuel'" (click)="mode = 'manuel'">MANUEL ⚙️</button>
+        </div>
+        <p class="desc"><b>Auto:</b> Système contrôlé automatiquement<br><b>Manuel:</b> Contrôle entièrement manuel</p>
+      </article>
+
+      <article class="card">
+        <h3>Enregistrement des données</h3>
+        <div class="row"><span>Activer l'enregistrement</span>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="recording"><span class="s"></span></label>
+        </div>
+        <div class="row"><span>Archivage automatique</span>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="autoArchive"><span class="s"></span></label>
+        </div>
+      </article>
+
+      <article class="card">
+        <h3>Notifications Système</h3>
+        <div class="row"><span>Notifications desktop</span>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="desktopNotifs"><span class="s"></span></label>
+        </div>
+        <div class="row"><span>Sons d'alerte</span>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="soundAlerts"><span class="s"></span></label>
+        </div>
+      </article>
+    </section>
+
+    <section class="sensor">
+      <h3>État du capteur</h3>
+      <div class="srow">
+        <span class="name">ESP8266-1:</span>
+        <span class="badge" [class.ok]="systemActive">{{ systemActive ? '✓ Connecté' : '✗ Déconnecté' }}</span>
+      </div>
+      <p class="ts">Dernière mesure: {{ fmt(lastMesure?.timestamp) }}</p>
+    </section>
+
+  <!-- ═══ RÉSERVATIONS ═══ -->
+  } @else if (activeTab === 'reservations') {
+
+    <!-- Sélecteur de salle + navigation semaine -->
+    <div class="res-controls">
+      <div>
+        <span class="k">SALLE</span>
+        <div class="room-tabs">
+          @for (r of rooms; track r.id) {
+            <button class="rtab" [class.active]="selectedRoomId === r.id"
+                    (click)="selectedRoomId = r.id; onRoomChange()">
+              {{ r.name }}<span class="cap"> · {{ r.capacity }}p · {{ r.floor }}</span>
+            </button>
+          }
+        </div>
+      </div>
+      <div class="week-nav">
+        <button class="nav-btn" (click)="prevWeek()">‹</button>
+        <span class="week-label">{{ getWeekLabel() }}</span>
+        <button class="nav-btn" (click)="nextWeek()">›</button>
+      </div>
+    </div>
+
+    <!-- Calendrier -->
+    <div class="cal-wrap">
+      @if (resLoading) {
+        <div class="cal-loading"><div class="spinner"></div></div>
+      }
+      <div class="calendar">
+
+        <!-- En-têtes jours -->
+        <div class="cal-head-empty"></div>
+        @for (day of weekDays; track day.getTime()) {
+          <div class="cal-head" [class.today]="isToday(day)">
+            {{ getDayLabel(day) }}
+            @if (isToday(day)) { <span class="today-dot"></span> }
+          </div>
+        }
+
+        <!-- Lignes horaires -->
+        @for (h of hours; track h) {
+          <div class="time-label">{{ h }}h</div>
+          @for (day of weekDays; track day.getTime()) {
+            <div class="slot"
+                 [class.free]="!isOccupied(day, h)"
+                 [class.occ]="isOccupied(day, h)"
+                 (click)="openModal(day, h)">
+              @let res = getResAt(day, h);
+              @if (res) {
+                <div class="res-block" (click)="deleteRes(res.id!, $event)">
+                  <div class="res-title">{{ res.title }}</div>
+                  <div class="res-meta">{{ res.user_name }} · {{ getDuration(res) }}min</div>
+                  <button class="del-btn" (click)="deleteRes(res.id!, $event)">✕</button>
+                </div>
+              }
+            </div>
+          }
+        }
+
+      </div>
+    </div>
+
+    <!-- Légende -->
+    <div class="legend">
+      <span class="leg-free">● Libre — cliquer pour réserver</span>
+      <span class="leg-occ">● Occupé</span>
+    </div>
+
+  <!-- ═══ AUTRES ONGLETS ═══ -->
+  } @else {
+    <div class="placeholder">Section {{ activeTab }} — à venir</div>
+  }
+
 </div>
+
+<!-- ═══ MODAL RÉSERVATION ═══ -->
+@if (showModal && selectedSlot) {
+  <div class="overlay" (click)="showModal = false">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Nouvelle réservation</h2>
+        <button class="modal-close" (click)="showModal = false">✕</button>
+      </div>
+      <p class="modal-sub">{{ getDayLabel(selectedSlot.date) }} à {{ selectedSlot.hour }}:00</p>
+
+      @if (errorMsg) {
+        <div class="error-msg">⚠️ {{ errorMsg }}</div>
+      }
+
+      <div class="field">
+        <label>Titre / Cours</label>
+        <input [(ngModel)]="form.title" placeholder="Ex: Cours de Maths" />
+      </div>
+
+      <div class="field">
+        <label>Votre nom</label>
+        <input [(ngModel)]="form.user_name" placeholder="Ex: M. Dupont" />
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Durée</label>
+          <select [(ngModel)]="form.duration">
+            <option [value]="30">30 min</option>
+            <option [value]="60">1h</option>
+            <option [value]="90">1h30</option>
+            <option [value]="120">2h</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Nb personnes</label>
+          <input type="number" [(ngModel)]="form.people_count" min="1" max="200" />
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" (click)="showModal = false">Annuler</button>
+        <button class="btn-ok" (click)="submit()">✓ Réserver</button>
+      </div>
+    </div>
+  </div>
+}

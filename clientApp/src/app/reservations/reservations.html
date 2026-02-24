@@ -1,0 +1,100 @@
+<div class="page">
+  <header class="topbar">
+    <div class="left">
+      <a routerLink="/" class="back">← Dashboard</a>
+      <h1>📅 Réservations de salles</h1>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="room-select">
+      <span class="k">SALLE</span>
+      <div class="room-tabs">
+        @for (r of rooms; track r.id) {
+          <button class="rtab" [class.active]="selectedRoomId === r.id"
+                  (click)="selectedRoomId = r.id; onRoomChange()">
+            {{ r.name }}<span class="cap"> · {{ r.capacity }}p · {{ r.floor }}</span>
+          </button>
+        }
+      </div>
+    </div>
+    <div class="week-nav">
+      <button class="nav-btn" (click)="prevWeek()">‹</button>
+      <span class="week-label">{{ getWeekLabel() }}</span>
+      <button class="nav-btn" (click)="nextWeek()">›</button>
+    </div>
+  </div>
+
+  <div class="calendar-wrap">
+    <div class="calendar">
+      <div class="cal-head-empty"></div>
+      @for (day of weekDays; track day.getTime()) {
+        <div class="cal-head" [class.today]="isToday(day)">
+          {{ getDayLabel(day) }}
+          @if (isToday(day)) { <span class="today-dot"></span> }
+        </div>
+      }
+      @for (h of hours; track h) {
+        <div class="time-label">{{ h }}:00</div>
+        @for (day of weekDays; track day.getTime()) {
+          <div class="slot" [class.free]="!isOccupied(day, h)"
+               [class.occupied]="isOccupied(day, h)"
+               (click)="openModal(day, h)">
+            @let res = getResAt(day, h);
+            @if (res) {
+              <div class="res-block" (click)="deleteRes(res.id!, $event)">
+                <div class="res-title">{{ res.title }}</div>
+                <div class="res-meta">{{ res.user_name }} · {{ getDuration(res) }}min</div>
+                <button class="del-btn" (click)="deleteRes(res.id!, $event)">✕</button>
+              </div>
+            }
+          </div>
+        }
+      }
+    </div>
+  </div>
+
+  <div class="legend">
+    <span class="leg-free">● Libre (cliquer pour réserver)</span>
+    <span class="leg-occ">● Occupé</span>
+  </div>
+</div>
+
+@if (showModal && selectedSlot) {
+  <div class="overlay" (click)="showModal = false">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h2>Nouvelle réservation</h2>
+      <p class="modal-sub">{{ getDayLabel(selectedSlot.date) }} à {{ selectedSlot.hour }}:00</p>
+
+      @if (errorMsg) { <div class="error-msg">{{ errorMsg }}</div> }
+
+      <div class="field">
+        <label>Titre / Cours</label>
+        <input [(ngModel)]="form.title" placeholder="Ex: Cours de Maths" />
+      </div>
+      <div class="field">
+        <label>Votre nom</label>
+        <input [(ngModel)]="form.user_name" placeholder="Ex: M. Dupont" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Durée</label>
+          <select [(ngModel)]="form.duration">
+            <option [value]="30">30 min</option>
+            <option [value]="60">1h</option>
+            <option [value]="90">1h30</option>
+            <option [value]="120">2h</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Nb personnes</label>
+          <input type="number" [(ngModel)]="form.people_count" min="1" max="200" />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" (click)="showModal = false">Annuler</button>
+        <button class="btn-ok" (click)="submit()">Réserver ✓</button>
+      </div>
+    </div>
+  </div>
+}
