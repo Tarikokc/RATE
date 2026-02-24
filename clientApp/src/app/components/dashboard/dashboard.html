@@ -1,0 +1,82 @@
+<div class="page">
+  <header class="topbar">
+    <h1 class="brand">RATE Dashboard</h1>
+    <div class="topbar-right">
+      <div class="live" [class.online]="systemActive">
+        <span class="dot"></span>{{ currentTime }}
+      </div>
+      <a class="btn" routerLink="/control-panel">⊞ Control Panel</a>
+    </div>
+  </header>
+
+  @if (mesure) {
+    <section class="grid">
+
+      <article class="card">
+        <div class="card-head"><span class="k">TEMPÉRATURE</span><span>🌡️</span></div>
+        <div class="bar bar-temp"></div>
+        <div class="val">{{ mesure.temp | number:'1.2-2' }}</div>
+        <div class="unit">°C</div>
+        <div class="line"></div>
+        <div class="stats">
+          <div class="st"><span class="sl">MIN</span><span class="sv">{{ tempStats.min | number:'1.2-2' }}</span></div>
+          <div class="st"><span class="sl">MOY</span><span class="sv">{{ tempStats.moy | number:'1.2-2' }}</span></div>
+          <div class="st"><span class="sl">MAX</span><span class="sv">{{ tempStats.max | number:'1.2-2' }}</span></div>
+        </div>
+        <div class="line"></div>
+        <div class="ts">{{ fmt(mesure.timestamp) }}</div>
+      </article>
+
+      <article class="card">
+        <div class="card-head"><span class="k">HUMIDITÉ</span><span>💧</span></div>
+        <div class="bar bar-hum"></div>
+        <div class="val">{{ mesure.hum | number:'1.2-2' }}</div>
+        <div class="unit">%</div>
+        <div class="line"></div>
+        <div class="stats">
+          <div class="st"><span class="sl">MIN</span><span class="sv">{{ humStats.min | number:'1.2-2' }}</span></div>
+          <div class="st"><span class="sl">MOY</span><span class="sv">{{ humStats.moy | number:'1.2-2' }}</span></div>
+          <div class="st"><span class="sl">MAX</span><span class="sv">{{ humStats.max | number:'1.2-2' }}</span></div>
+        </div>
+        <div class="line"></div>
+        <div class="ts">{{ fmt(mesure.timestamp) }}</div>
+      </article>
+
+      <article class="card">
+        <div class="card-head"><span class="k">PRESSION</span><span>🧭</span></div>
+        <div class="bar bar-pres"></div>
+        <div class="val">{{ mesure.pres | number:'1.2-2' }}</div>
+        <div class="unit">hPa</div>
+        <div class="line"></div>
+        <div class="stats">
+          <div class="st"><span class="sl">MIN</span><span class="sv">{{ presStats.min | number:'1.2-2' }}</span></div>
+          <div class="st"><span class="sl">MOY</span><span class="sv">{{ presStats.moy | number:'1.2-2' }}</span></div>
+          <div class="st"><span class="sl">MAX</span><span class="sv">{{ presStats.max | number:'1.2-2' }}</span></div>
+        </div>
+        <div class="line"></div>
+        <div class="ts">{{ fmt(mesure.timestamp) }}</div>
+      </article>
+
+      <article class="card motion" [class.on]="mesure.motion">
+        <div class="card-head"><span class="k">MOUVEMENT</span><span>👁️</span></div>
+        <div class="motion-text">{{ mesure.motion ? 'Détecté' : 'Aucun' }}</div>
+        <div class="badge" [class.on]="mesure.motion">
+          <span class="bdot"></span>{{ mesure.motion ? 'Détecté' : 'Inactif' }}
+        </div>
+        <div class="ts">{{ fmt(mesure.timestamp) }}</div>
+      </article>
+
+    </section>
+
+    <section class="big">
+      <span class="k">HISTORIQUE &amp; ANALYTICS</span>
+      <span>📊</span>
+    </section>
+
+  } @else {
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Connexion au capteur…</p>
+    </div>
+  }
+</div>

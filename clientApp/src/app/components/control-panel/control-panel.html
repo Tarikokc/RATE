@@ -1,0 +1,71 @@
+<div class="page">
+  <header class="topbar">
+    <div class="left">
+      <div class="h1row"><span class="sq"></span><h1>Control Panel</h1></div>
+      <a routerLink="/" class="back">← Retour au Dashboard</a>
+    </div>
+    <div class="right">
+      <div class="sys" [class.online]="systemActive">
+        <span class="dot"></span>{{ systemActive ? 'Système actif' : 'Hors ligne' }}
+      </div>
+      <button class="pill" (click)="exportCSV()">📄 CSV</button>
+      <button class="pill" (click)="exportJSON()">📄 JSON</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    @for (t of tabs; track t.id) {
+      <button class="tab" [class.active]="activeTab === t.id" (click)="activeTab = t.id">
+        {{ t.icon }} {{ t.label }}
+      </button>
+    }
+  </nav>
+  <div class="sep"></div>
+
+  @if (activeTab === 'systeme') {
+    <section class="grid">
+
+      <article class="card">
+        <h3>Mode Opérationnel</h3>
+        <div class="mode">
+          <button class="m" [class.on]="mode === 'auto'"   (click)="mode = 'auto'">AUTO 🤖</button>
+          <button class="m" [class.on]="mode === 'manuel'" (click)="mode = 'manuel'">MANUEL ⚙️</button>
+        </div>
+        <p class="desc"><b>Auto:</b> Système contrôlé automatiquement<br><b>Manuel:</b> Contrôle entièrement manuel</p>
+      </article>
+
+      <article class="card">
+        <h3>Enregistrement des données</h3>
+        <div class="row"><span>Activer l'enregistrement</span>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="recording"><span class="s"></span></label>
+        </div>
+        <div class="row"><span>Archivage automatique</span>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="autoArchive"><span class="s"></span></label>
+        </div>
+      </article>
+
+      <article class="card">
+        <h3>Notifications Système</h3>
+        <div class="row"><span>Notifications desktop</span>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="desktopNotifs"><span class="s"></span></label>
+        </div>
+        <div class="row"><span>Sons d'alerte</span>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="soundAlerts"><span class="s"></span></label>
+        </div>
+      </article>
+
+    </section>
+
+    <section class="sensor">
+      <h3>État du capteur</h3>
+      <div class="srow">
+        <span class="name">ESP8266-1:</span>
+        <span class="badge" [class.ok]="systemActive">{{ systemActive ? '✓ Connecté' : '✗ Déconnecté' }}</span>
+      </div>
+      <p class="ts">Dernière mesure: {{ fmt(lastMesure?.timestamp) }}</p>
+    </section>
+
+  } @else {
+    <div class="placeholder">Section {{ activeTab }} — à venir</div>
+  }
+</div>
