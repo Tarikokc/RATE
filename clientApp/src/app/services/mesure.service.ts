@@ -3,8 +3,8 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface Mesure {
-  temperature: number;
-  humidity: number;
+  temp: number;
+  hum: number;
   co2: number;
   motion: boolean;
   timestamp: string;

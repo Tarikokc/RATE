@@ -19,7 +19,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   systemActive = false;
   tempStats: Stats = { min: 0, moy: 0, max: 0 };
   humStats:  Stats = { min: 0, moy: 0, max: 0 };
-  presStats: Stats = { min: 0, moy: 0, max: 0 };
+  co2Stats: Stats = { min: 0, moy: 0, max: 0 };
   private subs: Subscription[] = [];
 
   constructor(private svc: MesureService) {}
@@ -42,9 +42,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
     this.svc.getAll().subscribe({
       next: (all) => {
-        this.tempStats = this.stats(all.map(m => m.temperature));
-        this.humStats  = this.stats(all.map(m => m.humidity));
-        this.presStats = this.stats(all.map(m => m.co2));
+        this.tempStats = this.stats(all.map(m => m.temp));
+        this.humStats  = this.stats(all.map(m => m.hum));
+        this.co2Stats = this.stats(all.map(m => m.co2));
       }
     });
   }

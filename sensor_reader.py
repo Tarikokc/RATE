@@ -48,7 +48,7 @@ def read():
         time.sleep(0.5)
 
     return {
-        "temp":   round(sensor.temperature, 2),
+        "temp":   round(sensor.temp, 2),
         "hum":    round(sensor.relative_humidity, 2),
         "co2":    round(sensor.CO2, 1),
         "motion": bool(GPIO.input(PIR_PIN))
