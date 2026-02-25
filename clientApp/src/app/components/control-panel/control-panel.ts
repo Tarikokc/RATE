@@ -1,71 +1,9 @@
-// import { Component } from '@angular/core';
-// import { CommonModule } from '@angular/common';
-// import { FormsModule } from '@angular/forms';
-// import { RouterModule } from '@angular/router';
-// import { MesureService, Mesure } from '../../services/mesure.service';
-
-// type Tab = 'systeme' | 'alertes' | 'automation' | 'historique';
-
-// @Component({
-//   selector: 'app-control-panel',
-//   standalone: true,
-//   imports: [CommonModule, FormsModule, RouterModule],
-//   templateUrl: './control-panel.html',
-//   styleUrl: './control-panel.css'
-// })
-// export class ControlPanelComponent {
-//   activeTab: Tab = 'systeme';
-//   mode: 'auto' | 'manuel' = 'auto';
-//   recording = true;
-//   autoArchive = false;
-//   desktopNotifs = false;
-//   soundAlerts = false;
-//   systemActive = false;
-//   lastMesure: Mesure | null = null;
-
-//   tabs = [
-//     { id: 'systeme'    as Tab, label: 'Système',    icon: '⚙️' },
-//     { id: 'alertes'    as Tab, label: 'Alertes',    icon: '🔔' },
-//     { id: 'automation' as Tab, label: 'Automation', icon: '🖥️' },
-//     { id: 'historique' as Tab, label: 'Historique', icon: '📋' },
-//     { id: 'salle' as Tab, label: 'Salle', icon: ''}
-//   ];
-
-//   constructor(private svc: MesureService) {
-//     this.svc.getLast().subscribe({
-//       next: (m) => { this.lastMesure = m; this.systemActive = true; },
-//       error: ()  => { this.systemActive = false; }
-//     });
-//   }
-
-//   fmt(ts?: string) { return ts ? new Date(ts).toLocaleTimeString('fr-FR') : '--:--:--'; }
-
-//   exportCSV() {
-//     this.svc.getAll().subscribe(all => {
-//       const csv = ['timestamp,temp,hum,pres,motion',
-//         ...all.map(m => `${m.timestamp},${m.temp},${m.hum},${m.pres},${m.motion}`)
-//       ].join('\n');
-//       this.download(new Blob([csv], { type: 'text/csv' }), 'rate-measures.csv');
-//     });
-//   }
-
-//   exportJSON() {
-//     this.svc.getAll().subscribe(all => {
-//       this.download(new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' }), 'rate-measures.json');
-//     });
-//   }
-
-//   private download(blob: Blob, name: string) {
-//     const a = document.createElement('a');
-//     a.href = URL.createObjectURL(blob);
-//     a.download = name;
-//     a.click();
-//   }
-// }
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
+import { Subject, Subscription } from 'rxjs';
+import { takeUntil, take, finalize } from 'rxjs/operators'; 
 import { MesureService, Mesure } from '../../services/mesure.service';
 import { ReservationService, Room, Reservation } from '../../services/reservation.service';
 
@@ -78,16 +16,16 @@ type Tab = 'systeme' | 'alertes' | 'automation' | 'historique' | 'reservations';
   templateUrl: './control-panel.html',
   styleUrl: './control-panel.css'
 })
-export class ControlPanelComponent implements OnInit {
+export class ControlPanelComponent implements OnInit, OnDestroy {
 
   // ── Tabs ─────────────────────────────────────────
   activeTab: Tab = 'systeme';
   tabs = [
-    { id: 'systeme'      as Tab, label: 'Système',       icon: '⚙️'  },
-    { id: 'alertes'      as Tab, label: 'Alertes',       icon: '🔔'  },
-    { id: 'automation'   as Tab, label: 'Automation',    icon: '🖥️'  },
-    { id: 'historique'   as Tab, label: 'Historique',    icon: '📋'  },
-    { id: 'reservations' as Tab, label: 'Réservations',  icon: '📅'  },
+    { id: 'systeme'      as Tab, label: 'Système',      icon: '⚙️' },
+    { id: 'alertes'      as Tab, label: 'Alertes',      icon: '🔔' },
+    { id: 'automation'   as Tab, label: 'Automation',   icon: '🖥️' },
+    { id: 'historique'   as Tab, label: 'Historique',   icon: '📋' },
+    { id: 'reservations' as Tab, label: 'Réservations', icon: '📅' },
   ];
 
   // ── Système ──────────────────────────────────────
@@ -110,25 +48,35 @@ export class ControlPanelComponent implements OnInit {
   errorMsg = '';
   resLoading = false;
 
+  // ── Subscriptions ─────────────────────────────────
+  private resSub?: Subscription;
+  private destroy$ = new Subject<void>();
+
   constructor(private svc: MesureService, private resSvc: ReservationService) {}
 
   ngOnInit() {
-    this.svc.getLast().subscribe({
-      next: (m) => { this.lastMesure = m; this.systemActive = true; },
-      error: ()  => { this.systemActive = false; }
+    this.svc.getLast().pipe(take(1)).subscribe({  // 👈
+      next:  m => { this.lastMesure = m; this.systemActive = true; },
+      error: () => { this.systemActive = false; }
     });
     this.buildWeek();
-    this.resSvc.getRooms().subscribe(r => {
+    this.resSvc.getRooms().pipe(take(1), takeUntil(this.destroy$)).subscribe(r => {  
       this.rooms = r;
       if (r.length) { this.selectedRoomId = r[0].id; this.loadRes(); }
     });
+  }
+
+  ngOnDestroy() {
+    this.resSub?.unsubscribe();
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   // ── Système helpers ───────────────────────────────
   fmt(ts?: string) { return ts ? new Date(ts).toLocaleTimeString('fr-FR') : '--:--:--'; }
 
   exportCSV() {
-    this.svc.getAll().subscribe(all => {
+    this.svc.getAll().pipe(take(1)).subscribe(all => { 
       const csv = ['timestamp,temp,hum,pres,motion',
         ...all.map(m => `${m.timestamp},${m.temp},${m.hum},${m.pres},${m.motion}`)
       ].join('\n');
@@ -137,7 +85,7 @@ export class ControlPanelComponent implements OnInit {
   }
 
   exportJSON() {
-    this.svc.getAll().subscribe(all => {
+    this.svc.getAll().pipe(take(1)).subscribe(all => {  // 👈
       this.download(new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' }), 'rate-measures.json');
     });
   }
@@ -150,7 +98,7 @@ export class ControlPanelComponent implements OnInit {
   // ── Réservations helpers ──────────────────────────
   getMonday(d: Date): Date {
     const date = new Date(d);
-    const day = date.getDay();
+    const day  = date.getDay();
     date.setDate(date.getDate() - day + (day === 0 ? -6 : 1));
     date.setHours(0, 0, 0, 0);
     return date;
@@ -169,17 +117,27 @@ export class ControlPanelComponent implements OnInit {
 
   loadRes() {
     if (!this.selectedRoomId) return;
+
+    this.resSub?.unsubscribe();
     this.resLoading = true;
-    this.resSvc.getReservations(undefined, this.selectedRoomId).subscribe({
-      next: r => { this.reservations = r; this.resLoading = false; },
-      error: () => { this.resLoading = false; }
-    });
+
+    this.resSub = this.resSvc.getReservations(undefined, this.selectedRoomId)
+      .pipe(
+        take(1),                                     
+        finalize(() => this.resLoading = false)      
+      )
+      .subscribe({
+        next:  r  => { this.reservations = r; },
+        error: () => { this.reservations = []; }
+      });
   }
 
   onRoomChange() { this.loadRes(); }
 
   sameDay(a: Date, b: Date) {
-    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    return a.getFullYear() === b.getFullYear()
+        && a.getMonth()    === b.getMonth()
+        && a.getDate()     === b.getDate();
   }
 
   getResAt(day: Date, h: number): Reservation | undefined {
@@ -191,7 +149,7 @@ export class ControlPanelComponent implements OnInit {
 
   isOccupied(day: Date, h: number): boolean {
     return this.reservations.some(r => {
-      const s = new Date(r.start_datetime), e = new Date(r.end_datetime);
+      const s  = new Date(r.start_datetime), e = new Date(r.end_datetime);
       const sS = new Date(day); sS.setHours(h, 0, 0, 0);
       const sE = new Date(day); sE.setHours(h + 1, 0, 0, 0);
       return this.sameDay(s, day) && s < sE && e > sS;
@@ -229,14 +187,14 @@ export class ControlPanelComponent implements OnInit {
     const end = new Date(start);
     end.setMinutes(end.getMinutes() + this.form.duration);
     this.resSvc.createReservation({
-      room_id: this.selectedRoomId,
-      user_name: this.form.user_name,
-      title: this.form.title,
+      room_id:        this.selectedRoomId,
+      user_name:      this.form.user_name,
+      title:          this.form.title,
       start_datetime: start.toISOString(),
-      end_datetime: end.toISOString(),
-      people_count: this.form.people_count
-    }).subscribe({
-      next: () => { this.showModal = false; this.loadRes(); },
+      end_datetime:   end.toISOString(),
+      people_count:   this.form.people_count
+    }).pipe(take(1)).subscribe({  // 👈
+      next:  () =>  { this.showModal = false; this.loadRes(); },
       error: (e) => { this.errorMsg = e.error?.error ?? 'Erreur serveur'; }
     });
   }
@@ -244,6 +202,6 @@ export class ControlPanelComponent implements OnInit {
   deleteRes(id: number, ev: Event) {
     ev.stopPropagation();
     if (confirm('Supprimer cette réservation ?'))
-      this.resSvc.deleteReservation(id).subscribe(() => this.loadRes());
+      this.resSvc.deleteReservation(id).pipe(take(1)).subscribe(() => this.loadRes());  
   }
 }

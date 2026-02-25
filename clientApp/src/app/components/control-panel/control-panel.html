@@ -187,9 +187,14 @@
                  (click)="openModal(day, h)">
               @let res = getResAt(day, h);
               @if (res) {
-                <div class="res-block" (click)="deleteRes(res.id!, $event)">
+                <!-- 👇 stopPropagation seulement (plus de deleteRes au click du bloc) -->
+                <div class="res-block" (click)="$event.stopPropagation()">
                   <div class="res-title">{{ res.title }}</div>
-                  <div class="res-meta">{{ res.user_name }} · {{ getDuration(res) }}min</div>
+                  <div class="res-meta">
+                    {{ res.user_name }} · {{ getDuration(res) }}min
+                  </div>
+                  <!-- 👇 people_count ajouté ici -->
+                  <div class="res-people">👥 {{ res.people_count }} pers.</div>
                   <button class="del-btn" (click)="deleteRes(res.id!, $event)">✕</button>
                 </div>
               }
