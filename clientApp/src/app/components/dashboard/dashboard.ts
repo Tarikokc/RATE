@@ -42,9 +42,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
     this.svc.getAll().subscribe({
       next: (all) => {
-        this.tempStats = this.stats(all.map(m => m.temp));
-        this.humStats  = this.stats(all.map(m => m.hum));
-        this.presStats = this.stats(all.map(m => m.pres));
+        this.tempStats = this.stats(all.map(m => m.temperature));
+        this.humStats  = this.stats(all.map(m => m.humidity));
+        this.presStats = this.stats(all.map(m => m.co2));
       }
     });
   }

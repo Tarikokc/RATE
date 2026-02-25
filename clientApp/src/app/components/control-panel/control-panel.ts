@@ -78,7 +78,7 @@ export class ControlPanelComponent implements OnInit, OnDestroy {
   exportCSV() {
     this.svc.getAll().pipe(take(1)).subscribe(all => { 
       const csv = ['timestamp,temp,hum,pres,motion',
-        ...all.map(m => `${m.timestamp},${m.temp},${m.hum},${m.pres},${m.motion}`)
+        ...all.map(m => `${m.timestamp},${m.temperature},${m.humidity},${m.co2},${m.motion}`)
       ].join('\n');
       this.download(new Blob([csv], { type: 'text/csv' }), 'rate-measures.csv');
     });
