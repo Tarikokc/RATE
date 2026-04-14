@@ -125,6 +125,8 @@ import { CommonModule, DecimalPipe, isPlatformBrowser } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { Subscription, interval } from 'rxjs';
 import { MesureService, Mesure } from '../../services/mesure.service';
+import { BaseChartDirective } from 'ng2-charts';
+import { ChartConfiguration } from 'chart.js';
 
 interface Stats {
   min: number;
@@ -135,7 +137,7 @@ interface Stats {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, DecimalPipe, RouterModule],
+  imports: [CommonModule, DecimalPipe, RouterModule,BaseChartDirective],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.css'
 })
@@ -150,6 +152,25 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private subs: Subscription[] = [];
   private platformId = inject(PLATFORM_ID);
+
+  chartLabels: string[] = [];
+  chartDatasets: ChartConfiguration<'line'>['data']['datasets'] = [
+    {
+      data: [],
+      label: 'Température (°C)',
+      borderColor: '#e74c3c',
+      backgroundColor: 'rgba(231,76,60,0.1)',
+      tension: 0.4,
+      fill: true,
+    }
+  ];
+  chartOptions: ChartConfiguration<'line'>['options'] = {
+    responsive: true,
+    scales: {
+      x: { ticks: { maxTicksLimit: 10 } }
+    }
+  };
+
 
   constructor(private svc: MesureService) {}
 
@@ -194,6 +215,18 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       },
       error: (err) => {
         console.error('[DASH] getAll error', err);
+      }
+    });
+
+    this.svc.getAll().subscribe({
+      next: (all) => {
+        this.co2Stats = this.stats(all.map(m => m.co2));
+        this.tempStats = this.stats(all.map(m => m.temp));
+        this.humStats  = this.stats(all.map(m => m.hum));
+
+        const last30 = all.slice(-30);
+        this.chartLabels   = last30.map(m => this.fmt(m.timestamp));
+        this.chartDatasets[0].data = last30.map(m => m.temp);
       }
     });
   }
