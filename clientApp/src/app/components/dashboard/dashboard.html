@@ -1,0 +1,116 @@
+<div class="page">
+  <header class="topbar">
+    <h1 class="brand">RATE Dashboard</h1>
+    <div class="topbar-right">
+      <div class="live" [class.online]="systemActive">
+        <span class="dot"></span>{{ currentTime }}
+      </div>
+      <a class="btn" routerLink="/control-panel">⊞ Control Panel</a>
+    </div>
+  </header>
+  
+  
+  <div class="weather-mini" *ngIf="mesure as m">
+    {{ m.outdoor_temp | number:'1.0-1' }} °C ·
+    {{ m.outdoor_hum  | number:'1.0-0' }} %
+  </div>
+
+  <!-- Bloc principal si on a une mesure -->
+  <section class="grid" *ngIf="mesure as m; else loading">
+    <article class="card">
+      <div class="card-head">
+        <span class="k">TEMPÉRATURE</span><span>🌡️</span>
+      </div>
+      <div class="bar bar-temp"></div>
+      <div class="val">{{ m.temp | number:'1.2-2' }}</div>
+      <div class="unit">°C</div>
+      <div class="line"></div>
+      <div class="stats">
+        <div class="st">
+          <span class="sl">MIN</span>
+          <span class="sv">{{ tempStats.min | number:'1.2-2' }}</span>
+        </div>
+        <div class="st">
+          <span class="sl">MOY</span>
+          <span class="sv">{{ tempStats.moy | number:'1.2-2' }}</span>
+        </div>
+        <div class="st">
+          <span class="sl">MAX</span>
+          <span class="sv">{{ tempStats.max | number:'1.2-2' }}</span>
+        </div>
+      </div>
+      <div class="line"></div>
+      <div class="ts">{{ fmt(m.timestamp) }}</div>
+    </article>
+
+    <article class="card">
+      <div class="card-head">
+        <span class="k">HUMIDITÉ</span><span>💧</span>
+      </div>
+      <div class="bar bar-hum"></div>
+      <div class="val">{{ m.hum | number:'1.2-2' }}</div>
+      <div class="unit">%</div>
+      <div class="line"></div>
+      <div class="stats">
+        <div class="st">
+          <span class="sl">MIN</span>
+          <span class="sv">{{ humStats.min | number:'1.2-2' }}</span>
+        </div>
+        <div class="st">
+          <span class="sl">MOY</span>
+          <span class="sv">{{ humStats.moy | number:'1.2-2' }}</span>
+        </div>
+        <div class="st">
+          <span class="sl">MAX</span>
+          <span class="sv">{{ humStats.max | number:'1.2-2' }}</span>
+        </div>
+      </div>
+      <div class="line"></div>
+      <div class="ts">{{ fmt(m.timestamp) }}</div>
+    </article>
+
+    <article class="card">
+      <div class="card-head">
+        <span class="k">CO2</span><span>🧭</span>
+      </div>
+      <div class="bar bar-pres"></div>
+      <div class="val">{{ m.co2 | number:'1.0-0' }}</div>
+      <div class="unit">ppm</div>
+      <div class="line"></div>
+      <div class="stats">
+        <div class="st">
+          <span class="sl">MIN</span>
+          <span class="sv">{{ co2Stats.min | number:'1.0-0' }}</span>
+        </div>
+        <div class="st">
+          <span class="sl">MOY</span>
+          <span class="sv">{{ co2Stats.moy | number:'1.0-0' }}</span>
+        </div>
+        <div class="st">
+          <span class="sl">MAX</span>
+          <span class="sv">{{ co2Stats.max | number:'1.0-0' }}</span>
+        </div>
+      </div>
+      <div class="line"></div>
+      <div class="ts">{{ fmt(m.timestamp) }}</div>
+    </article>
+
+    <article class="card motion" [class.on]="m.motion">
+      <div class="card-head">
+        <span class="k">MOUVEMENT</span><span>👁️</span>
+      </div>
+      <div class="motion-text">{{ m.motion ? 'Détecté' : 'Aucun' }}</div>
+      <div class="badge" [class.on]="m.motion">
+        <span class="bdot"></span>{{ m.motion ? 'Détecté' : 'Inactif' }}
+      </div>
+      <div class="ts">{{ fmt(m.timestamp) }}</div>
+    </article>
+  </section>
+
+  <ng-template #loading>
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Connexion au capteur…</p>
+    </div>
+  </ng-template>
+</div>

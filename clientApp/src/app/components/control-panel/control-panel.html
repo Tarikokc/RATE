@@ -1,0 +1,246 @@
+<div class="page">
+
+  <!-- Header -->
+  <header class="topbar">
+    <div class="left">
+      <div class="h1row"><span class="sq"></span><h1>Control Panel</h1></div>
+      <a routerLink="/" class="back">← Retour au Dashboard</a>
+    </div>
+    <div class="right">
+      <div class="sys" [class.online]="systemActive">
+        <span class="dot"></span>{{ systemActive ? 'Système actif' : 'Hors ligne' }}
+      </div>
+      <button class="pill" (click)="exportCSV()">📄 CSV</button>
+      <button class="pill" (click)="exportJSON()">📄 JSON</button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="tabs">
+    @for (t of tabs; track t.id) {
+      <button class="tab" [class.active]="activeTab === t.id" (click)="activeTab = t.id">
+        {{ t.icon }} {{ t.label }}
+      </button>
+    }
+  </nav>
+  <div class="sep"></div>
+
+  <!-- ═══ SYSTÈME ═══ -->
+  @if (activeTab === 'systeme') {
+    <section class="grid">
+      <article class="card">
+        <h3>Mode Opérationnel</h3>
+        <div class="mode">
+          <button class="m" [class.on]="mode === 'auto'"   (click)="mode = 'auto'">AUTO 🤖</button>
+          <button class="m" [class.on]="mode === 'manuel'" (click)="mode = 'manuel'">MANUEL ⚙️</button>
+        </div>
+        <p class="desc"><b>Auto:</b> Système contrôlé automatiquement<br><b>Manuel:</b> Contrôle entièrement manuel</p>
+      </article>
+
+      <article class="card">
+        <h3>Enregistrement des données</h3>
+        <div class="row"><span>Activer l'enregistrement</span>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="recording"><span class="s"></span></label>
+        </div>
+        <div class="row"><span>Archivage automatique</span>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="autoArchive"><span class="s"></span></label>
+        </div>
+      </article>
+
+      <article class="card">
+        <h3>Notifications Système</h3>
+        <div class="row"><span>Notifications desktop</span>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="desktopNotifs"><span class="s"></span></label>
+        </div>
+        <div class="row"><span>Sons d'alerte</span>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="soundAlerts"><span class="s"></span></label>
+        </div>
+      </article>
+    </section>
+
+    <section class="sensor">
+      <h3>État du capteur</h3>
+      <div class="srow">
+        <span class="name">ESP8266-1</span>
+        <span class="badge" [class.ok]="systemActive">{{ systemActive ? '✓ Connecté' : '✗ Déconnecté' }}</span>
+      </div>
+      <p class="ts">Dernière mesure : {{ fmt(lastMesure?.timestamp) }}</p>
+    </section>
+
+  <!-- ═══ ALERTES ═══ -->
+  } @else if (activeTab === 'alertes') {
+
+    <section class="grid">
+      @for (a of alerts; track a.label) {
+        <article class="card"
+          [class.alert-ok]="a.level === 'ok'"
+          [class.alert-warn]="a.level === 'warn'"
+          [class.alert-danger]="a.level === 'danger'">
+          <span class="k">{{ a.label }}</span>
+          <h3>{{ a.value }}</h3>
+          <p class="desc">{{ a.message }}</p>
+        </article>
+      }
+
+      @if (!alerts.length) {
+        <div class="placeholder">Aucune donnée disponible pour générer les alertes.</div>
+      }
+    </section>
+
+  <!-- ═══ HISTORIQUE ═══ -->
+  } @else if (activeTab === 'historique') {
+
+    <section class="card">
+      <div class="row" style="padding-top: 0;">
+        <div>
+          <span class="k">Historique récent</span>
+          <p class="desc">20 dernières mesures enregistrées.</p>
+        </div>
+        <button class="pill" (click)="loadHistory()">↺ Actualiser</button>
+      </div>
+
+      @if (historyLoading) {
+        <div class="placeholder">Chargement…</div>
+      } @else if (!history.length) {
+        <div class="placeholder">Aucun historique disponible.</div>
+      } @else {
+        <div class="hist head">
+          <span>Heure</span>
+          <span>Temp</span>
+          <span>Humidité</span>
+          <span>CO2</span>
+          <span>Mouvement</span>
+          <span>État</span>
+        </div>
+
+        @for (m of history; track m.timestamp) {
+          <div class="row hist">
+            <span>{{ fmt(m.timestamp) }}</span>
+            <span>{{ m.temp | number:'1.1-1' }} °C</span>
+            <span>{{ m.hum | number:'1.0-0' }} %</span>
+            <span>{{ m.co2 | number:'1.0-0' }} ppm</span>
+            <span>{{ m.motion ? '● Oui' : '– Non' }}</span>
+            <span class="badge" [ngClass]="severityClass(m)">
+              {{ severityLabel(m) }}
+            </span>
+          </div>
+        }
+      }
+    </section>
+
+  <!-- ═══ RÉSERVATIONS ═══ -->
+  } @else if (activeTab === 'reservations') {
+
+    <div class="res-controls">
+      <div>
+        <span class="k">SALLE</span>
+        <div class="room-tabs">
+          @for (r of rooms; track r.id) {
+            <button class="rtab" [class.active]="selectedRoomId === r.id"
+                    (click)="selectedRoomId = r.id; onRoomChange()">
+              {{ r.name }}<span class="cap"> · {{ r.capacity }}p · {{ r.floor }}</span>
+            </button>
+          }
+        </div>
+      </div>
+      <div class="week-nav">
+        <button class="nav-btn" (click)="prevWeek()">‹</button>
+        <span class="week-label">{{ getWeekLabel() }}</span>
+        <button class="nav-btn" (click)="nextWeek()">›</button>
+      </div>
+    </div>
+
+    <div class="cal-wrap">
+      @if (resLoading) {
+        <div class="cal-loading"><div class="spinner"></div></div>
+      }
+      <div class="calendar">
+        <div class="cal-head-empty"></div>
+        @for (day of weekDays; track day.getTime()) {
+          <div class="cal-head" [class.today]="isToday(day)">
+            {{ getDayLabel(day) }}
+            @if (isToday(day)) { <span class="today-dot"></span> }
+          </div>
+        }
+
+        @for (h of hours; track h) {
+          <div class="time-label">{{ h }}h</div>
+          @for (day of weekDays; track day.getTime()) {
+            <div class="slot"
+                 [class.free]="!isOccupied(day, h)"
+                 [class.occ]="isOccupied(day, h)"
+                 (click)="openModal(day, h)">
+              @let res = getResAt(day, h);
+              @if (res) {
+                <div class="res-block" (click)="$event.stopPropagation()">
+                  <div class="res-title">{{ res.title }}</div>
+                  <div class="res-meta">{{ res.user_name }} · {{ getDuration(res) }}min</div>
+                  <div class="res-people">👥 {{ res.people_count }} pers.</div>
+                  <button class="del-btn" (click)="deleteRes(res.id!, $event)">✕</button>
+                </div>
+              }
+            </div>
+          }
+        }
+      </div>
+    </div>
+
+    <div class="legend">
+      <span class="leg-free">● Libre — cliquer pour réserver</span>
+      <span class="leg-occ">● Occupé</span>
+    </div>
+
+  <!-- ═══ AUTOMATION ═══ -->
+  } @else {
+    <div class="placeholder">Section {{ activeTab }} — à venir</div>
+  }
+
+</div>
+
+<!-- ═══ MODAL RÉSERVATION ═══ -->
+@if (showModal && selectedSlot) {
+  <div class="overlay" (click)="showModal = false">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Nouvelle réservation</h2>
+        <button class="modal-close" (click)="showModal = false">✕</button>
+      </div>
+      <p class="modal-sub">{{ getDayLabel(selectedSlot.date) }} à {{ selectedSlot.hour }}:00</p>
+
+      @if (errorMsg) {
+        <div class="error-msg">⚠️ {{ errorMsg }}</div>
+      }
+
+      <div class="field">
+        <label>Titre / Cours</label>
+        <input [(ngModel)]="form.title" placeholder="Ex: Cours de Maths" />
+      </div>
+
+      <div class="field">
+        <label>Votre nom</label>
+        <input [(ngModel)]="form.user_name" placeholder="Ex: M. Dupont" />
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Durée</label>
+          <select [(ngModel)]="form.duration">
+            <option [value]="30">30 min</option>
+            <option [value]="60">1h</option>
+            <option [value]="90">1h30</option>
+            <option [value]="120">2h</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Nb personnes</label>
+          <input type="number" [(ngModel)]="form.people_count" min="1" max="200" />
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" (click)="showModal = false">Annuler</button>
+        <button class="btn-ok" (click)="submit()">✓ Réserver</button>
+      </div>
+    </div>
+  </div>
+}
