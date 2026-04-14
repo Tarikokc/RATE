@@ -5,7 +5,7 @@
 #include <Adafruit_BME280.h>
 
 const char* ssid     = "iPhone de Tarik";
-const char* password = "TarikArt942003.#";
+const char* password = "TarikArt942003";
 
 // IP de ton PC et route Flask
 const char* serverUrl = "http://172.20.10.8:5000/measure";

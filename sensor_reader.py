@@ -25,7 +25,7 @@ try:
 
     SIMULATION = False
     print("✅ SCD41 + PIR GPIO14 OK")
-    time.sleep(5)  # SCD41 a besoin de 5s pour la première mesure
+    time.sleep(5) 
 
 except Exception as e:
     SIMULATION = True

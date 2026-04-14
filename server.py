@@ -3,7 +3,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 from flask import Flask, request, jsonify, send_from_directory
 from datetime import datetime, timedelta
 import json, os, sqlite3
-
+from weather import get_weather
 app = Flask(__name__)
 
 DATA_FILE = "measures.ndjson"
@@ -123,10 +123,29 @@ def measure():
     append_measure(data)
     return "OK", 200
 
+# @app.route("/api/last")
+# def api_last():
+#     m = read_measures()
+#     return jsonify(m[-1]) if m else (jsonify({"error": "no data"}), 404)
 @app.route("/api/last")
 def api_last():
-    m = read_measures()
-    return jsonify(m[-1]) if m else (jsonify({"error": "no data"}), 404)
+    print(">>> /api/last called")  # debug 1
+
+    mesures = read_measures()
+    if not mesures:
+        print(">>> no data in read_measures()")  # debug 2
+        return jsonify({"error": "no data"}), 404
+
+    mesure = mesures[-1]
+    print(">>> mesure from ESP:", mesure)  # debug 3
+
+    meteo = get_weather()
+    print(">>> meteo from OpenMeteo:", meteo)  # debug 4
+
+    payload = {**mesure, **meteo}
+    print(">>> payload sent to Angular:", payload)  # debug 5
+
+    return jsonify(payload)
 
 @app.route("/api/all")
 def api_all():

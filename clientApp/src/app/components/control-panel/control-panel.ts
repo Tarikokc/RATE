@@ -6,7 +6,8 @@ import { Subject, Subscription } from 'rxjs';
 import { takeUntil, take, finalize } from 'rxjs/operators'; 
 import { MesureService, Mesure } from '../../services/mesure.service';
 import { ReservationService, Room, Reservation } from '../../services/reservation.service';
-
+import { buildAlerts, AlertItem } from '../../services/control-alerts';
+import { buildHistory, getSeverity, getSeverityLabel } from '../../services/control-history';
 type Tab = 'systeme' | 'alertes' | 'automation' | 'historique' | 'reservations';
 
 @Component({
@@ -48,23 +49,42 @@ export class ControlPanelComponent implements OnInit, OnDestroy {
   errorMsg = '';
   resLoading = false;
 
+  alerts: AlertItem[] = [];
+  history: Mesure[] = [];
+  historyLoading = false;
+
   // ── Subscriptions ─────────────────────────────────
   private resSub?: Subscription;
   private destroy$ = new Subject<void>();
 
   constructor(private svc: MesureService, private resSvc: ReservationService) {}
 
+  // ngOnInit() {
+  //   this.svc.getLast().pipe(take(1)).subscribe({  
+  //     next:  m => { this.lastMesure = m; this.systemActive = true; },
+  //     error: () => { this.systemActive = false; }
+  //   });
+  //   this.buildWeek();
+  //   this.resSvc.getRooms().pipe(take(1), takeUntil(this.destroy$)).subscribe(r => {  
+  //     this.rooms = r;
+  //     if (r.length) { this.selectedRoomId = r[0].id; this.loadRes(); }
+  //   });
+  // }
+
   ngOnInit() {
-    this.svc.getLast().pipe(take(1)).subscribe({  // 👈
-      next:  m => { this.lastMesure = m; this.systemActive = true; },
-      error: () => { this.systemActive = false; }
-    });
-    this.buildWeek();
-    this.resSvc.getRooms().pipe(take(1), takeUntil(this.destroy$)).subscribe(r => {  
-      this.rooms = r;
-      if (r.length) { this.selectedRoomId = r[0].id; this.loadRes(); }
-    });
-  }
+  this.loadLastMesure();
+  this.loadHistory();
+
+  this.buildWeek();
+
+  this.resSvc.getRooms().pipe(take(1), takeUntil(this.destroy$)).subscribe(r => {
+    this.rooms = r;
+    if (r.length) {
+      this.selectedRoomId = r[0].id;
+      this.loadRes();
+    }
+  });
+  } 
 
   ngOnDestroy() {
     this.resSub?.unsubscribe();
@@ -203,5 +223,44 @@ export class ControlPanelComponent implements OnInit, OnDestroy {
     ev.stopPropagation();
     if (confirm('Supprimer cette réservation ?'))
       this.resSvc.deleteReservation(id).pipe(take(1)).subscribe(() => this.loadRes());  
+  }
+
+    loadLastMesure() {
+    this.svc.getLast().pipe(take(1)).subscribe({
+      next: m => {
+        this.lastMesure = m;
+        this.systemActive = true;
+        this.alerts = buildAlerts(m);
+      },
+      error: () => {
+        this.systemActive = false;
+        this.lastMesure = null;
+        this.alerts = [];
+      }
+    });
+  }
+
+  loadHistory() {
+    this.historyLoading = true;
+
+    this.svc.getAll().pipe(
+      take(1),
+      finalize(() => this.historyLoading = false)
+    ).subscribe({
+      next: all => {
+        this.history = buildHistory(all, 20);
+      },
+      error: () => {
+        this.history = [];
+      }
+    });
+  }
+
+  severityClass(m: Mesure) {
+    return getSeverity(m);
+  }
+
+  severityLabel(m: Mesure) {
+    return getSeverityLabel(getSeverity(m));
   }
 }
