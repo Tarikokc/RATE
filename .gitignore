@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Base de données & données locales
+rate.db
+measures.ndjson
+.cache.sqlite
+
+# Modèle IA & scalers (trop lourds pour git)
+*.tflite
+*.pkl
+
+# Secrets Arduino
+sketch_dec16a/config.h
+
+# Angular build
+clientApp/dist/
+clientApp/node_modules/
+
+# VS Code
+.vscode/
