@@ -4,6 +4,8 @@ from flask import Flask, request, jsonify, send_from_directory
 from datetime import datetime, timedelta
 import json, os, sqlite3
 from weather import get_weather
+from heating_controller import get_next_reservation, get_current_reservation
+
 app = Flask(__name__)
 
 DATA_FILE = "measures.ndjson"
@@ -160,46 +162,55 @@ def weather():
 def heating_decision(current_temp, upcoming_res, current_res):
     now = datetime.utcnow()
 
+    # ─── Surchauffe (priorité absolue) ───────────────────
+    if current_temp is not None and current_temp > TARGET_TEMP + 5:
+        return {"status": "SURCHAUFFE", "label": "Surchauffe ⚠️", "color": "red",
+                "detail": f"{current_temp}°C — dépasse le seuil de surchauffe ({TARGET_TEMP + 5}°C)",
+                "action": "HEAT_OFF"}
+
+    # ─── Réservation en cours ─────────────────────────────
     if current_res:
         end       = datetime.fromisoformat(current_res["end_datetime"].replace("Z", ""))
         remaining = int((end - now).total_seconds() / 60)
         if current_temp is None:
-            return {"status": "OCCUPE",         "label": "Occupee",          "color": "blue",
+            return {"status": "OCCUPE",         "label": "Occupee",        "color": "blue",
                     "detail": f"Fin dans {remaining} min", "action": None}
         if current_temp >= TARGET_TEMP - TEMP_TOLERANCE:
-            return {"status": "CIBLE_ATTEINTE", "label": "Cible atteinte",   "color": "green",
-                    "detail": f"{current_temp}C / {TARGET_TEMP}C - Fin dans {remaining} min", "action": None}
-        return {"status": "EN_CHAUFFE",         "label": "En chauffe",       "color": "orange",
-                "detail": f"{current_temp}C -> {TARGET_TEMP}C - Fin dans {remaining} min", "action": "HEAT_ON"}
+            return {"status": "CIBLE_ATTEINTE", "label": "Cible atteinte", "color": "green",
+                    "detail": f"{current_temp}°C / {TARGET_TEMP}°C — fin dans {remaining} min", "action": None}
+        return {"status": "EN_CHAUFFE",         "label": "En chauffe",     "color": "orange",
+                "detail": f"{current_temp}°C → {TARGET_TEMP}°C — fin dans {remaining} min", "action": "HEAT_ON"}
 
+    # ─── Réservation à venir ──────────────────────────────
     if upcoming_res:
         start         = datetime.fromisoformat(upcoming_res["start_datetime"].replace("Z", ""))
         minutes_until = int((start - now).total_seconds() / 60)
 
         if current_temp is None:
-            return {"status": "PRECHAUFFAGE", "label": "Prechauffage", "color": "orange",
-                    "detail": f"Resa dans {minutes_until} min", "action": "HEAT_ON"}
+            return {"status": "PRECHAUFFAGE", "label": "Préchauffage", "color": "orange",
+                    "detail": f"Résa dans {minutes_until} min", "action": "HEAT_ON"}
 
         temp_gap = TARGET_TEMP - current_temp
         if temp_gap <= 0:
             return {"status": "CIBLE_ATTEINTE", "label": "Cible atteinte", "color": "green",
-                    "detail": f"{current_temp}C pret avant {start.strftime('%H:%M')}", "action": None}
+                    "detail": f"{current_temp}°C — prêt avant {start.strftime('%H:%M')}", "action": None}
 
         minutes_needed = int((temp_gap / DEG_PER_HOUR) * 60)
         if minutes_until <= minutes_needed + 10:
-            return {"status": "PRECHAUFFAGE", "label": "Prechauffage", "color": "orange",
-                    "detail": f"{current_temp}C -> {TARGET_TEMP}C - Resa dans {minutes_until} min ({minutes_needed} min de chauffe)",
+            return {"status": "PRECHAUFFAGE", "label": "Préchauffage", "color": "orange",
+                    "detail": f"{current_temp}°C → {TARGET_TEMP}°C — résa dans {minutes_until} min ({minutes_needed} min de chauffe)",
                     "action": "HEAT_ON"}
 
         wait = minutes_until - minutes_needed - 10
         return {"status": "ATTENTE", "label": f"Chauffe dans {wait} min", "color": "yellow",
-                "detail": f"{current_temp}C - Resa dans {minutes_until} min", "action": "WAIT"}
+                "detail": f"{current_temp}°C — résa dans {minutes_until} min", "action": "WAIT"}
 
+    # ─── Aucune réservation ───────────────────────────────
     return {"status": "STANDBY", "label": "Standby", "color": "gray",
-            "detail": f"{current_temp if current_temp else '--'}C - Aucune resa", "action": None}
+            "detail": f"{current_temp if current_temp else '--'}°C — aucune résa", "action": None}
 
 # ─── Salles ───────────────────────────────────────────
-@app.route("/api/rooms", methods=["GET"])
+@app.route("/api/rooms", methods=["GET"], strict_slashes=False)
 def get_rooms():
     c    = db()
     rows = [dict(r) for r in c.execute("SELECT * FROM rooms ORDER BY floor, name").fetchall()]
@@ -375,6 +386,34 @@ def predict(room_id):
         "outdoor_temp":   w["outdoor_temp"],
         "horizon":        "5 minutes"
     })
+    
+@app.route("/api/heating/decision")
+def heating_decision_api():
+    rooms  = [dict(r) for r in db().execute("SELECT * FROM rooms").fetchall()]
+    result = []
+    for room in rooms:
+        # measures     = [m for m in read_measures() if m.get("sensor") == room.get("sensor_id")]
+        room_id  = room["id"]
+        measures = [m for m in read_measures() if m.get("room_id") == room_id]
+
+
+        # Si toujours null, fallback : prend la dernière mesure disponible
+        if not measures:
+            all_measures = read_measures()
+            measures = all_measures  # temporaire pour le POC mono-capteur
+        current_temp = measures[-1]["temp"] if measures else None
+        result.append({
+            "room":         room["name"],
+            "current_temp": current_temp,
+            # "decision":     decide(current_temp,
+            #                     get_next_reservation(room["id"]),
+            #                     get_current_reservation(room["id"]))
+            "decision":     heating_decision(  # ← était decide()
+                                current_temp,
+                                get_next_reservation(room["id"]),
+                                get_current_reservation(room["id"]))
+        })
+    return jsonify(result)
 
 # ─── Serve Angular ────────────────────────────────────
 DIST = os.path.join(os.path.dirname(__file__), "clientApp", "dist", "client-app", "browser")
