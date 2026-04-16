@@ -1,6 +1,6 @@
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, g
 from datetime import datetime, timedelta
 import json, os, sqlite3
 from weather import get_weather
@@ -8,11 +8,7 @@ from heating_controller import get_next_reservation, get_current_reservation
 
 app = Flask(__name__)
 
-DATA_FILE = "measures.ndjson"
-DB_FILE   = "rate.db"
-
-# ─── Météo ────────────────────────────────────────────
-from weather import get_weather
+DB_FILE = "rate.db"
 
 # ─── IA ───────────────────────────────────────────────
 try:
@@ -50,15 +46,24 @@ def preflight():
     if request.method == "OPTIONS":
         return jsonify({}), 200
 
-# ─── SQLite ───────────────────────────────────────────
+# ─── SQLite (connexion par contexte Flask) ────────────
 def db():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Retourne la connexion SQLite du contexte Flask (une seule par requête)."""
+    if 'db' not in g:
+        g.db = sqlite3.connect(DB_FILE)
+        g.db.row_factory = sqlite3.Row
+    return g.db
+
+@app.teardown_appcontext
+def close_db(exc=None):
+    conn = g.pop('db', None)
+    if conn is not None:
+        conn.close()
 
 def init_db():
-    c = db()
-    c.executescript("""
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
         CREATE TABLE IF NOT EXISTS rooms (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             name        TEXT    NOT NULL,
@@ -78,9 +83,22 @@ def init_db():
             created_at     TEXT    DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
         );
+        CREATE TABLE IF NOT EXISTS measures (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp  TEXT    NOT NULL,
+            room_id    INTEGER,
+            sensor_id  TEXT,
+            temp       REAL,
+            hum        REAL,
+            co2        REAL,
+            motion     INTEGER DEFAULT 0,
+            extra      TEXT    DEFAULT '{}'
+        );
+        CREATE INDEX IF NOT EXISTS idx_measures_room_ts
+            ON measures (room_id, timestamp DESC);
     """)
-    if not c.execute("SELECT 1 FROM rooms LIMIT 1").fetchone():
-        c.executemany(
+    if not conn.execute("SELECT 1 FROM rooms LIMIT 1").fetchone():
+        conn.executemany(
             "INSERT INTO rooms (name, capacity, floor, description, sensor_id) VALUES (?,?,?,?,?)",
             [
                 ("Salle A101",    30,  "1er etage",  "Salle de cours principale",  "rpi5-room-1"),
@@ -89,34 +107,82 @@ def init_db():
                 ("Amphi",        100,  "RDC",        "Grand amphitheatre",         "rpi5-room-4"),
             ]
         )
-    c.commit()
-    c.close()
+    conn.commit()
+    conn.close()
 
 init_db()
 
-# ─── Mesures capteur ──────────────────────────────────
-def append_measure(m):
-    with open(DATA_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(m) + "\n")
+# ─── Helpers migration NDJSON → SQLite ───────────────
+def _row_to_dict(row):
+    """Convertit une Row SQLite en dict, en dépliant le champ extra."""
+    d = dict(row)
+    try:
+        extra = json.loads(d.pop('extra') or '{}')
+        d.update(extra)
+    except Exception:
+        pass
+    return d
 
-def read_measures():
-    if not os.path.exists(DATA_FILE):
-        return []
-    out = []
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                try:   out.append(json.loads(line))
-                except: pass
-    return out
+def append_measure(m: dict):
+    """Insère une mesure dans SQLite."""
+    extra_keys = set(m.keys()) - {'timestamp', 'room_id', 'sensor_id', 'temp', 'hum', 'co2', 'motion'}
+    extra = {k: m[k] for k in extra_keys}
+    conn = sqlite3.connect(DB_FILE)
+    conn.execute(
+        "INSERT INTO measures (timestamp, room_id, sensor_id, temp, hum, co2, motion, extra)"
+        " VALUES (?,?,?,?,?,?,?,?)",
+        (
+            m.get('timestamp'),
+            m.get('room_id'),
+            m.get('sensor_id'),
+            m.get('temp'),
+            m.get('hum'),
+            m.get('co2'),
+            int(bool(m.get('motion', False))),
+            json.dumps(extra),
+        )
+    )
+    conn.commit()
+    conn.close()
+
+def read_measures(limit: int = None, room_id: int = None):
+    """Lit les mesures depuis SQLite avec support LIMIT et filtre room_id."""
+    q = "SELECT * FROM measures"
+    params = []
+    if room_id is not None:
+        q += " WHERE room_id = ?"
+        params.append(room_id)
+    q += " ORDER BY timestamp ASC"
+    if limit:
+        q += " LIMIT ?"
+        params.append(limit)
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    rows = [_row_to_dict(r) for r in conn.execute(q, params).fetchall()]
+    conn.close()
+    return rows
+
+def get_last_measure(room_id: int = None):
+    """Récupère la dernière mesure (optionnellement filtrée par room_id)."""
+    q = "SELECT * FROM measures"
+    params = []
+    if room_id is not None:
+        q += " WHERE room_id = ?"
+        params.append(room_id)
+    q += " ORDER BY timestamp DESC LIMIT 1"
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(q, params).fetchone()
+    conn.close()
+    return _row_to_dict(row) if row else None
 
 def get_last_temp_for_room(room_id):
-    measures = read_measures()
-    for m in reversed(measures):
-        if m.get("room_id") == room_id or m.get("sensor_id") == f"rpi5-room-{room_id}":
-            return m.get("temp")
-    return None
+    row = get_last_measure(room_id)
+    if row:
+        return row.get('temp')
+    # fallback mono-capteur
+    row = get_last_measure()
+    return row.get('temp') if row else None
 
 @app.route("/measure", methods=["POST"])
 def measure():
@@ -125,33 +191,29 @@ def measure():
     append_measure(data)
     return "OK", 200
 
-# @app.route("/api/last")
-# def api_last():
-#     m = read_measures()
-#     return jsonify(m[-1]) if m else (jsonify({"error": "no data"}), 404)
 @app.route("/api/last")
 def api_last():
-    print(">>> /api/last called")  # debug 1
-
-    mesures = read_measures()
-    if not mesures:
-        print(">>> no data in read_measures()")  # debug 2
+    mesure = get_last_measure()
+    if not mesure:
         return jsonify({"error": "no data"}), 404
-
-    mesure = mesures[-1]
-    print(">>> mesure from ESP:", mesure)  # debug 3
-
-    meteo = get_weather()
-    print(">>> meteo from OpenMeteo:", meteo)  # debug 4
-
+    meteo   = get_weather()
     payload = {**mesure, **meteo}
-    print(">>> payload sent to Angular:", payload)  # debug 5
-
     return jsonify(payload)
 
 @app.route("/api/all")
 def api_all():
-    return jsonify(read_measures())
+    limit  = request.args.get('limit',  type=int)
+    offset = request.args.get('offset', type=int, default=0)
+    q      = "SELECT * FROM measures ORDER BY timestamp ASC"
+    params = []
+    if limit:
+        q += " LIMIT ? OFFSET ?"
+        params += [limit, offset]
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    rows = [_row_to_dict(r) for r in conn.execute(q, params).fetchall()]
+    conn.close()
+    return jsonify(rows)
 
 # ─── Météo ────────────────────────────────────────────
 @app.route("/api/weather")
@@ -162,13 +224,11 @@ def weather():
 def heating_decision(current_temp, upcoming_res, current_res):
     now = datetime.utcnow()
 
-    # ─── Surchauffe (priorité absolue) ───────────────────
     if current_temp is not None and current_temp > TARGET_TEMP + 5:
         return {"status": "SURCHAUFFE", "label": "Surchauffe ⚠️", "color": "red",
                 "detail": f"{current_temp}°C — dépasse le seuil de surchauffe ({TARGET_TEMP + 5}°C)",
                 "action": "HEAT_OFF"}
 
-    # ─── Réservation en cours ─────────────────────────────
     if current_res:
         end       = datetime.fromisoformat(current_res["end_datetime"].replace("Z", ""))
         remaining = int((end - now).total_seconds() / 60)
@@ -181,7 +241,6 @@ def heating_decision(current_temp, upcoming_res, current_res):
         return {"status": "EN_CHAUFFE",         "label": "En chauffe",     "color": "orange",
                 "detail": f"{current_temp}°C → {TARGET_TEMP}°C — fin dans {remaining} min", "action": "HEAT_ON"}
 
-    # ─── Réservation à venir ──────────────────────────────
     if upcoming_res:
         start         = datetime.fromisoformat(upcoming_res["start_datetime"].replace("Z", ""))
         minutes_until = int((start - now).total_seconds() / 60)
@@ -205,16 +264,13 @@ def heating_decision(current_temp, upcoming_res, current_res):
         return {"status": "ATTENTE", "label": f"Chauffe dans {wait} min", "color": "yellow",
                 "detail": f"{current_temp}°C — résa dans {minutes_until} min", "action": "WAIT"}
 
-    # ─── Aucune réservation ───────────────────────────────
     return {"status": "STANDBY", "label": "Standby", "color": "gray",
             "detail": f"{current_temp if current_temp else '--'}°C — aucune résa", "action": None}
 
 # ─── Salles ───────────────────────────────────────────
 @app.route("/api/rooms", methods=["GET"], strict_slashes=False)
 def get_rooms():
-    c    = db()
-    rows = [dict(r) for r in c.execute("SELECT * FROM rooms ORDER BY floor, name").fetchall()]
-    c.close()
+    rows = [dict(r) for r in db().execute("SELECT * FROM rooms ORDER BY floor, name").fetchall()]
     return jsonify(rows)
 
 @app.route("/api/rooms", methods=["POST"])
@@ -226,16 +282,13 @@ def create_room():
         (d["name"], d.get("capacity", 10), d.get("floor", "RDC"), d.get("description", ""))
     )
     c.commit()
-    room_id = cur.lastrowid
-    c.close()
-    return jsonify({**d, "id": room_id}), 201
+    return jsonify({**d, "id": cur.lastrowid}), 201
 
 @app.route("/api/rooms/<int:rid>", methods=["DELETE"])
 def delete_room(rid):
     c = db()
     c.execute("DELETE FROM rooms WHERE id=?", (rid,))
     c.commit()
-    c.close()
     return "", 204
 
 @app.route("/api/rooms/status")
@@ -280,7 +333,6 @@ def rooms_status():
             "heating":              decision
         })
 
-    c.close()
     return jsonify(result)
 
 # ─── Reservations ─────────────────────────────────────
@@ -302,9 +354,7 @@ def get_reservations():
         q += " AND r.room_id = ?"
         params.append(int(room_id))
     q += " ORDER BY r.start_datetime"
-    c    = db()
-    rows = [dict(r) for r in c.execute(q, params).fetchall()]
-    c.close()
+    rows = [dict(r) for r in db().execute(q, params).fetchall()]
     return jsonify(rows)
 
 @app.route("/api/reservations", methods=["POST"])
@@ -317,23 +367,19 @@ def create_reservation():
           AND NOT (end_datetime <= ? OR start_datetime >= ?)
     """, (d["room_id"], d["start_datetime"], d["end_datetime"])).fetchone()
     if conflict:
-        c.close()
         return jsonify({"error": "Creneau deja reserve pour cette salle"}), 409
     cur = c.execute(
         "INSERT INTO reservations (room_id, user_name, title, start_datetime, end_datetime, people_count) VALUES (?,?,?,?,?,?)",
         (d["room_id"], d["user_name"], d["title"], d["start_datetime"], d["end_datetime"], d.get("people_count", 1))
     )
     c.commit()
-    new_id = cur.lastrowid
-    c.close()
-    return jsonify({**d, "id": new_id}), 201
+    return jsonify({**d, "id": cur.lastrowid}), 201
 
 @app.route("/api/reservations/<int:rid>", methods=["DELETE"])
 def delete_reservation(rid):
     c = db()
     c.execute("DELETE FROM reservations WHERE id=?", (rid,))
     c.commit()
-    c.close()
     return "", 204
 
 # ─── Prediction IA ────────────────────────────────────
@@ -342,9 +388,7 @@ def predict(room_id):
     if not AI_READY:
         return jsonify({"error": "Modele IA non charge"}), 503
 
-    measures = [m for m in read_measures()
-                if m.get("room_id") == room_id][-12:]
-
+    measures = read_measures(limit=12, room_id=room_id)
     if len(measures) < 12:
         return jsonify({"error": "Pas assez de donnees (min 12)"}), 400
 
@@ -386,29 +430,17 @@ def predict(room_id):
         "outdoor_temp":   w["outdoor_temp"],
         "horizon":        "5 minutes"
     })
-    
+
 @app.route("/api/heating/decision")
 def heating_decision_api():
     rooms  = [dict(r) for r in db().execute("SELECT * FROM rooms").fetchall()]
     result = []
     for room in rooms:
-        # measures     = [m for m in read_measures() if m.get("sensor") == room.get("sensor_id")]
-        room_id  = room["id"]
-        measures = [m for m in read_measures() if m.get("room_id") == room_id]
-
-
-        # Si toujours null, fallback : prend la dernière mesure disponible
-        if not measures:
-            all_measures = read_measures()
-            measures = all_measures  # temporaire pour le POC mono-capteur
-        current_temp = measures[-1]["temp"] if measures else None
+        current_temp = get_last_temp_for_room(room["id"])
         result.append({
             "room":         room["name"],
             "current_temp": current_temp,
-            # "decision":     decide(current_temp,
-            #                     get_next_reservation(room["id"]),
-            #                     get_current_reservation(room["id"]))
-            "decision":     heating_decision(  # ← était decide()
+            "decision":     heating_decision(
                                 current_temp,
                                 get_next_reservation(room["id"]),
                                 get_current_reservation(room["id"]))
