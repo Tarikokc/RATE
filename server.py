@@ -58,6 +58,37 @@ def db():
 
 def init_db():
     c = db()
+    # c.executescript("""
+    #     CREATE TABLE IF NOT EXISTS rooms (
+    #         id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    #         name        TEXT    NOT NULL,
+    #         capacity    INTEGER DEFAULT 10,
+    #         floor       TEXT    DEFAULT 'RDC',
+    #         description TEXT    DEFAULT '',
+    #         sensor_id   TEXT    DEFAULT NULL
+    #     );
+    #     CREATE TABLE IF NOT EXISTS reservations (
+    #         id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    #         room_id        INTEGER NOT NULL,
+    #         user_name      TEXT    NOT NULL,
+    #         title          TEXT    NOT NULL,
+    #         start_datetime TEXT    NOT NULL,
+    #         end_datetime   TEXT    NOT NULL,
+    #         people_count   INTEGER DEFAULT 1,
+    #         created_at     TEXT    DEFAULT CURRENT_TIMESTAMP,
+    #         FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    #     );
+    # """)
+    # if not c.execute("SELECT 1 FROM rooms LIMIT 1").fetchone():
+    #     c.executemany(
+    #         "INSERT INTO rooms (name, capacity, floor, description, sensor_id) VALUES (?,?,?,?,?)",
+    #         [
+    #             ("Salle A101",    30,  "1er etage",  "Salle de cours principale",  "rpi5-room-1"),
+    #             ("Salle A102",    20,  "1er etage",  "Salle de travaux pratiques", "rpi5-room-2"),
+    #             ("Salle B201",    15,  "2eme etage", "Salle de reunion",           "rpi5-room-3"),
+    #             ("Amphi",        100,  "RDC",        "Grand amphitheatre",         "rpi5-room-4"),
+    #         ]
+    #     )
     c.executescript("""
         CREATE TABLE IF NOT EXISTS rooms (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,16 +110,6 @@ def init_db():
             FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
         );
     """)
-    if not c.execute("SELECT 1 FROM rooms LIMIT 1").fetchone():
-        c.executemany(
-            "INSERT INTO rooms (name, capacity, floor, description, sensor_id) VALUES (?,?,?,?,?)",
-            [
-                ("Salle A101",    30,  "1er etage",  "Salle de cours principale",  "rpi5-room-1"),
-                ("Salle A102",    20,  "1er etage",  "Salle de travaux pratiques", "rpi5-room-2"),
-                ("Salle B201",    15,  "2eme etage", "Salle de reunion",           "rpi5-room-3"),
-                ("Amphi",        100,  "RDC",        "Grand amphitheatre",         "rpi5-room-4"),
-            ]
-        )
     c.commit()
     c.close()
 

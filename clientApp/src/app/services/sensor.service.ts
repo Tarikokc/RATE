@@ -3,37 +3,36 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { isPlatformServer } from '@angular/common';
 
-export interface Mesure {
-  temp: number;
-  hum: number;
-  co2: number;
-  motion: boolean;
-  timestamp: string;
-
-  outdoor_temp: number;
-  outdoor_hum: number;
-  wind_speed: number;
+export interface Sensor {
+  id?: number;
+  name: string;
+  floor: string;
+  description?: string;
+  sensor_id: string;
+  capacity?: number;
 }
 
 @Injectable({ providedIn: 'root' })
-export class MesureService {
+export class SensorService {
   private http = inject(HttpClient);
   private platformId = inject(PLATFORM_ID);
 
-  // Base URL de l'API Flask
   private get apiBase(): string {
     if (isPlatformServer(this.platformId)) {
       return 'http://127.0.0.1:5000';
     }
-    // IP de ta machine Flask sur le réseau
     return 'http://172.20.10.8:5000';
   }
 
-  getLast(): Observable<Mesure> {
-    return this.http.get<Mesure>(`${this.apiBase}/api/last`);
+  getAll(): Observable<Sensor[]> {
+    return this.http.get<Sensor[]>(`${this.apiBase}/api/rooms`);
   }
 
-  getAll(): Observable<Mesure[]> {
-    return this.http.get<Mesure[]>(`${this.apiBase}/api/all`);
+  create(s: Sensor): Observable<Sensor> {
+    return this.http.post<Sensor>(`${this.apiBase}/api/rooms`, s);
+  }
+
+  delete(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiBase}/api/rooms/${id}`);
   }
 }

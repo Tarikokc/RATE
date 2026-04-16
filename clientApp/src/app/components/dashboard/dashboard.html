@@ -15,7 +15,6 @@
     {{ m.outdoor_hum  | number:'1.0-0' }} %
   </div>
 
-  <!-- Bloc principal si on a une mesure -->
   <section class="grid" *ngIf="mesure as m; else loading">
     <article class="card">
       <div class="card-head">
@@ -112,10 +111,10 @@
     <canvas baseChart
       [data]="{ labels: chartLabels, datasets: chartDatasets }"
       [options]="chartOptions"
+      
       type="line">
     </canvas>
   </section>
-
   
   <ng-template #loading>
     <div class="loading">
@@ -123,4 +122,5 @@
       <p>Connexion au capteur…</p>
     </div>
   </ng-template>
-</div>
+</div> 
+
