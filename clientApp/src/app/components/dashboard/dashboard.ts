@@ -68,8 +68,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  /** Premier rendu déclenché après la vue pour éviter NG0100.
-   *  On utilise un seul appel différé — l'interval de 5s prend le relais ensuite. */
   ngAfterViewInit() {
     if (isPlatformBrowser(this.platformId)) {
       setTimeout(() => this.refresh(), 0);
@@ -80,15 +78,14 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.currentTime = new Date().toLocaleTimeString('fr-FR');
   }
 
-  /** Applique un tableau de mesures aux stats et au graphique. */
   private applyData(all: Mesure[]) {
     this.tempStats = this.stats(all.map(m => m.temp));
     this.humStats  = this.stats(all.map(m => m.hum));
     this.co2Stats  = this.stats(all.map(m => m.co2));
 
     const last30 = all.slice(-30);
-    this.chartLabels            = last30.map(m => this.fmt(m.timestamp));
-    this.chartDatasets[0].data  = last30.map(m => m.temp);
+    this.chartLabels           = last30.map(m => this.fmt(m.timestamp));
+    this.chartDatasets[0].data = last30.map(m => m.temp);
   }
 
   private refresh() {
