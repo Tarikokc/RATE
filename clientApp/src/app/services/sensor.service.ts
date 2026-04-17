@@ -12,6 +12,11 @@ export interface Sensor {
   capacity?: number;
 }
 
+export interface AvailableSensor {
+  sensor_id: string;
+  last_seen: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class SensorService {
   private http = inject(HttpClient);
@@ -21,7 +26,7 @@ export class SensorService {
     if (isPlatformServer(this.platformId)) {
       return 'http://127.0.0.1:5000';
     }
-    return 'http://172.20.10.12:5000';
+    return 'http://172.20.10.8:5000';
   }
 
   getAll(): Observable<Sensor[]> {
@@ -34,5 +39,14 @@ export class SensorService {
 
   delete(id: number): Observable<void> {
     return this.http.delete<void>(`${this.apiBase}/api/rooms/${id}`);
+  }
+
+  getAvailableSensors(): Observable<AvailableSensor[]> {
+    return this.http.get<AvailableSensor[]>(`${this.apiBase}/api/sensors/available`);
+  }
+
+  // Associe un capteur ESP à une salle existante
+  assignSensor(roomId: number, sensorId: string): Observable<any> {
+    return this.http.patch(`${this.apiBase}/api/rooms/${roomId}`, { sensor_id: sensorId });
   }
 }

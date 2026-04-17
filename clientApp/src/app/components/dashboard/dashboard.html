@@ -1,12 +1,16 @@
 <div class="page">
   <header class="topbar">
     <h1 class="brand">RATE Dashboard</h1>
+    <a routerLink="/" class="back">← Retour à l'accueil</a>
+
     <div class="topbar-right">
       <div class="live" [class.online]="systemActive">
         <span class="dot"></span>{{ currentTime }}
       </div>
       <a class="btn" routerLink="/control-panel">⊞ Control Panel</a>
     </div>
+
+    
   </header>
 
   
