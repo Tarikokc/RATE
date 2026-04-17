@@ -1,79 +1,89 @@
 <div class="home-page">
-    <header class="home-header">
-        <h1>RATE <span>Dashboard</span></h1>
-        <p>Système de monitoring intelligent des salles</p>
-    </header>
+  <header class="home-header">
+    <h1>RATE <span>Dashboard</span></h1>
+    <p>Système de monitoring intelligent des salles</p>
+  </header>
 
-    <div class="loading" *ngIf="loading">
-        <div class="spinner"></div>
-        <p>Chargement des capteurs…</p>
+  @if (loading) {
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Chargement des capteurs…</p>
     </div>
-
-    <div class="empty-state" *ngIf="!loading && flaskDown">
-        <div class="empty-icon">⚠️</div>
-        <h2>Serveur inaccessible</h2>
-        <p>Impossible de charger les capteurs.</p>
+  } @else if (flaskDown) {
+    <div class="empty-state">
+      <div class="empty-icon">⚠️</div>
+      <h2>Serveur inaccessible</h2>
+      <p>Impossible de charger les capteurs.</p>
+      <button class="btn-primary" (click)="loadSensors()">Réessayer</button>
     </div>
+  } @else {
+    <section class="sensors-section">
+      <div class="section-header">
+        <h2>Capteurs enregistrés</h2>
+        <button class="btn-primary" (click)="openForm()">+ Ajouter</button>
+      </div>
 
-    <section class="sensors-section" *ngIf="sensors.length > 0">
-        <div class="section-header">
-            <h2>Capteurs enregistrés</h2>
-            <button class="btn-primary" (click)="openForm()">+ Ajouter</button>
-        </div>
+      @if (success) {
+        <div class="success-msg">✅ {{ success }}</div>
+      }
 
-        <div class="success-msg" *ngIf="success">✅ {{ success }}</div>
-
+      @if (sensors.length > 0) {
         <div class="sensors-grid">
-            <div class="sensor-card" *ngFor="let s of sensors">
-                <div class="sensor-icon">📡</div>
-                <div class="sensor-info">
-                    <strong>{{ s.name }}</strong>
-                    <span>{{ s.floor }}</span>
-                    <span class="sensor-id">{{ s.sensor_id }}</span>
-                    <span class="desc" *ngIf="s.description">{{ s.description }}</span>
-                </div>
-                <button class="btn-delete" (click)="delete(s.id!, s.name)">🗑️</button>
+          @for (s of sensors; track s.sensor_id) {
+            <div class="sensor-card">
+              <div class="sensor-icon">📡</div>
+              <div class="sensor-info">
+                <strong>{{ s.name }}</strong>
+                <span>{{ s.floor }}</span>
+                <span class="sensor-id">{{ s.sensor_id }}</span>
+                @if (s.description) {
+                  <span class="desc">{{ s.description }}</span>
+                }
+              </div>
+              <button class="btn-delete" (click)="delete(s.id!, s.name)">🗑️</button>
             </div>
+          }
         </div>
 
         <div class="cta">
-            <button class="btn-dashboard" (click)="goToDashboard()">Accéder au Dashboard →</button>
+          <button class="btn-dashboard" (click)="goToDashboard()">Accéder au Dashboard →</button>
         </div>
+      }
     </section>
+  }
 
-    <div class="modal-overlay" *ngIf="showForm">
-        <div class="modal" (click)="$event.stopPropagation()">
-            <h3>Ajouter un capteur</h3>
+  @if (showForm) {
+    <div class="modal-overlay">
+      <div class="modal" (click)="$event.stopPropagation()">
+        <h3>Ajouter un capteur</h3>
 
-            <div class="error-msg" *ngIf="errorMsg">⚠️ {{ errorMsg }}</div>
+        @if (errorMsg) {
+          <div class="error-msg">⚠️ {{ errorMsg }}</div>
+        }
 
-            <label>Nom de la salle *
-                <input [(ngModel)]="form.name" placeholder="ex: Salle A101" />
-            </label>
+        <label>Nom de la salle *
+          <input [(ngModel)]="form.name" placeholder="ex: Salle A101" />
+        </label>
 
-            <label>Étage *
-                <input [(ngModel)]="form.floor" placeholder="ex: 1er étage" />
-            </label>
+        <label>Étage *
+          <input [(ngModel)]="form.floor" placeholder="ex: 1er étage" />
+        </label>
 
-            <label>Description
-                <input [(ngModel)]="form.description" placeholder="ex: Salle principale" />
-            </label>
+        <label>Description
+          <input [(ngModel)]="form.description" placeholder="ex: Salle principale" />
+        </label>
 
-            <label>Sensor ID *
-                <input [(ngModel)]="form.sensor_id" placeholder="ex: rpi5-room-1" />
-            </label>
+        <label>Sensor ID *
+          <input [(ngModel)]="form.sensor_id" placeholder="ex: rpi5-room-1" />
+        </label>
 
-            <div class="modal-actions">
-                <button class="btn-cancel" *ngIf="sensors.length > 0" (click)="closeForm()">Annuler</button>
-                <button class="btn-primary" (click)="submit()">Ajouter</button>
-            </div>
+        <div class="modal-actions">
+          @if (sensors.length > 0) {
+            <button class="btn-cancel" (click)="closeForm()">Annuler</button>
+          }
+          <button class="btn-primary" (click)="submit()">Ajouter</button>
         </div>
-
-        <div class="empty-state" *ngIf="!loading && flaskDown">
-            <div class="empty-icon">⚠️</div>
-            <h2>Serveur inaccessible</h2>
-            <p>Impossible de charger les capteurs.</p>
-            <button class="btn-primary" (click)="loadSensors()">Réessayer</button>
-        </div>
+      </div>
     </div>
+  }
 </div>

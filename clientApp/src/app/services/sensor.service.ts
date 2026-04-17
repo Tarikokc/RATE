@@ -21,7 +21,7 @@ export class SensorService {
     if (isPlatformServer(this.platformId)) {
       return 'http://127.0.0.1:5000';
     }
-    return 'http://172.20.10.8:5000';
+    return 'http://172.20.10.12:5000';
   }
 
   getAll(): Observable<Sensor[]> {
