@@ -142,6 +142,18 @@ def receive_measure():
 
     return jsonify({"ok": True}), 200
 
+
+# ─── Route : mesures filtrées par capteur ─────────────────────
+@app.route("/api/measures", methods=["GET"])
+def get_measures_by_sensor():
+    sensor_id = request.args.get("sensor_id")
+    all_measures = read_measures()
+    if sensor_id:
+        all_measures = [
+            m for m in all_measures
+            if (m.get("sensor_id") or m.get("sensor")) == sensor_id
+        ]
+    return jsonify(all_measures)
 # ─── Routes : last / all ──────────────────────────────────────
 @app.route("/api/last")
 def api_last():
