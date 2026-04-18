@@ -1,24 +1,26 @@
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
-from flask import Flask, request, jsonify, send_from_directory
+
+import json, os, pickle
+import sqlite3
 from datetime import datetime, timedelta
-import json, os, sqlite3
+
+import numpy as np
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+
 from weather import get_weather
 from heating_controller import get_next_reservation, get_current_reservation
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 DATA_FILE = "measures.ndjson"
 DB_FILE   = "rate.db"
 
-# ─── Météo ────────────────────────────────────────────
-from weather import get_weather
-
-# ─── IA ───────────────────────────────────────────────
+# ─── IA ───────────────────────────────────────────────────────
 try:
     import tensorflow as tf
-    import pickle
-    import numpy as np
 
     interpreter = tf.lite.Interpreter(model_path="rate_model.tflite")
     interpreter.allocate_tensors()
@@ -31,26 +33,13 @@ except Exception as e:
     AI_READY = False
     print(f"[IA] Non disponible : {e}")
 
-# ─── Constantes chauffage ─────────────────────────────
+# ─── Constantes chauffage ─────────────────────────────────────
 TARGET_TEMP      = 20.0
 HEAT_ADVANCE_MIN = 60
 DEG_PER_HOUR     = 2.5
 TEMP_TOLERANCE   = 0.5
 
-# ─── CORS ─────────────────────────────────────────────
-@app.after_request
-def cors(r):
-    r.headers["Access-Control-Allow-Origin"]  = "*"
-    r.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    r.headers["Access-Control-Allow-Methods"] = "GET,POST,DELETE,OPTIONS"
-    return r
-
-@app.before_request
-def preflight():
-    if request.method == "OPTIONS":
-        return jsonify({}), 200
-
-# ─── SQLite ───────────────────────────────────────────
+# ─── SQLite ───────────────────────────────────────────────────
 def db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
@@ -65,8 +54,14 @@ def init_db():
             capacity    INTEGER DEFAULT 10,
             floor       TEXT    DEFAULT 'RDC',
             description TEXT    DEFAULT '',
-            sensor_id   TEXT    DEFAULT NULL
+            sensor_id   TEXT    DEFAULT NULL UNIQUE
         );
+
+        CREATE TABLE IF NOT EXISTS sensors (
+            sensor_id TEXT PRIMARY KEY,
+            last_seen TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS reservations (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
             room_id        INTEGER NOT NULL,
@@ -79,22 +74,12 @@ def init_db():
             FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
         );
     """)
-    if not c.execute("SELECT 1 FROM rooms LIMIT 1").fetchone():
-        c.executemany(
-            "INSERT INTO rooms (name, capacity, floor, description, sensor_id) VALUES (?,?,?,?,?)",
-            [
-                ("Salle A101",    30,  "1er etage",  "Salle de cours principale",  "rpi5-room-1"),
-                ("Salle A102",    20,  "1er etage",  "Salle de travaux pratiques", "rpi5-room-2"),
-                ("Salle B201",    15,  "2eme etage", "Salle de reunion",           "rpi5-room-3"),
-                ("Amphi",        100,  "RDC",        "Grand amphitheatre",         "rpi5-room-4"),
-            ]
-        )
     c.commit()
     c.close()
 
 init_db()
 
-# ─── Mesures capteur ──────────────────────────────────
+# ─── Mesures ──────────────────────────────────────────────────
 def append_measure(m):
     with open(DATA_FILE, "a", encoding="utf-8") as f:
         f.write(json.dumps(m) + "\n")
@@ -107,68 +92,84 @@ def read_measures():
         for line in f:
             line = line.strip()
             if line:
-                try:   out.append(json.loads(line))
+                try:    out.append(json.loads(line))
                 except: pass
     return out
 
-def get_last_temp_for_room(room_id):
-    measures = read_measures()
-    for m in reversed(measures):
-        if m.get("room_id") == room_id or m.get("sensor_id") == f"rpi5-room-{room_id}":
-            return m.get("temp")
+def get_last_measure_for_room(room_id):
+    c = db()
+    row = c.execute("SELECT sensor_id FROM rooms WHERE id=?", (room_id,)).fetchone()
+    c.close()
+    if not row or not row["sensor_id"]:
+        return None
+    sid = row["sensor_id"]
+    for m in reversed(read_measures()):
+        # Rétrocompat : accepte "sensor_id" ET "sensor"
+        if m.get("sensor_id") == sid or m.get("sensor") == sid:
+            return m
     return None
 
-@app.route("/measure", methods=["POST"])
-def measure():
-    data = request.get_json(force=True)
-    data["timestamp"] = datetime.utcnow().isoformat() + "Z"
-    append_measure(data)
-    return "OK", 200
+def get_last_temp_for_room(room_id):
+    m = get_last_measure_for_room(room_id)
+    return m.get("temp") if m else None
 
-# @app.route("/api/last")
-# def api_last():
-#     m = read_measures()
-#     return jsonify(m[-1]) if m else (jsonify({"error": "no data"}), 404)
+# ─── Route : réception mesures ESP ────────────────────────────
+@app.route("/measure", methods=["POST"])
+def receive_measure():
+    data = request.get_json(force=True)
+
+    # Supporte "sensor" ou "sensor_id" dans le payload ESP
+    sensor_id = data.get("sensor_id") or data.get("sensor")
+    if not sensor_id:
+        return jsonify({"error": "sensor_id manquant"}), 400
+
+    # Normalise la clé
+    data["sensor_id"] = sensor_id
+    data.pop("sensor", None)
+    data["timestamp"] = datetime.utcnow().isoformat() + "Z"
+
+    append_measure(data)
+
+    # Enregistre / met à jour le capteur dans la table sensors
+    c = db()
+    c.execute(
+        "INSERT INTO sensors(sensor_id, last_seen) VALUES(?,?) "
+        "ON CONFLICT(sensor_id) DO UPDATE SET last_seen=excluded.last_seen",
+        (sensor_id, data["timestamp"])
+    )
+    c.commit()
+    c.close()
+
+    return jsonify({"ok": True}), 200
+
+# ─── Routes : last / all ──────────────────────────────────────
 @app.route("/api/last")
 def api_last():
-    print(">>> /api/last called")  # debug 1
-
     mesures = read_measures()
     if not mesures:
-        print(">>> no data in read_measures()")  # debug 2
         return jsonify({"error": "no data"}), 404
-
-    mesure = mesures[-1]
-    print(">>> mesure from ESP:", mesure)  # debug 3
-
-    meteo = get_weather()
-    print(">>> meteo from OpenMeteo:", meteo)  # debug 4
-
-    payload = {**mesure, **meteo}
-    print(">>> payload sent to Angular:", payload)  # debug 5
-
-    return jsonify(payload)
+    mesure  = mesures[-1]
+    meteo   = get_weather()
+    return jsonify({**mesure, **meteo})
 
 @app.route("/api/all")
 def api_all():
     return jsonify(read_measures())
 
-# ─── Météo ────────────────────────────────────────────
+# ─── Météo ────────────────────────────────────────────────────
 @app.route("/api/weather")
 def weather():
     return jsonify(get_weather())
 
-# ─── Logique chauffage ────────────────────────────────
+# ─── Logique chauffage ────────────────────────────────────────
 def heating_decision(current_temp, upcoming_res, current_res):
     now = datetime.utcnow()
 
-    # ─── Surchauffe (priorité absolue) ───────────────────
     if current_temp is not None and current_temp > TARGET_TEMP + 5:
         return {"status": "SURCHAUFFE", "label": "Surchauffe ⚠️", "color": "red",
                 "detail": f"{current_temp}°C — dépasse le seuil de surchauffe ({TARGET_TEMP + 5}°C)",
                 "action": "HEAT_OFF"}
 
-    # ─── Réservation en cours ─────────────────────────────
     if current_res:
         end       = datetime.fromisoformat(current_res["end_datetime"].replace("Z", ""))
         remaining = int((end - now).total_seconds() / 60)
@@ -181,36 +182,30 @@ def heating_decision(current_temp, upcoming_res, current_res):
         return {"status": "EN_CHAUFFE",         "label": "En chauffe",     "color": "orange",
                 "detail": f"{current_temp}°C → {TARGET_TEMP}°C — fin dans {remaining} min", "action": "HEAT_ON"}
 
-    # ─── Réservation à venir ──────────────────────────────
     if upcoming_res:
         start         = datetime.fromisoformat(upcoming_res["start_datetime"].replace("Z", ""))
         minutes_until = int((start - now).total_seconds() / 60)
-
         if current_temp is None:
             return {"status": "PRECHAUFFAGE", "label": "Préchauffage", "color": "orange",
                     "detail": f"Résa dans {minutes_until} min", "action": "HEAT_ON"}
-
         temp_gap = TARGET_TEMP - current_temp
         if temp_gap <= 0:
             return {"status": "CIBLE_ATTEINTE", "label": "Cible atteinte", "color": "green",
                     "detail": f"{current_temp}°C — prêt avant {start.strftime('%H:%M')}", "action": None}
-
         minutes_needed = int((temp_gap / DEG_PER_HOUR) * 60)
         if minutes_until <= minutes_needed + 10:
             return {"status": "PRECHAUFFAGE", "label": "Préchauffage", "color": "orange",
                     "detail": f"{current_temp}°C → {TARGET_TEMP}°C — résa dans {minutes_until} min ({minutes_needed} min de chauffe)",
                     "action": "HEAT_ON"}
-
         wait = minutes_until - minutes_needed - 10
         return {"status": "ATTENTE", "label": f"Chauffe dans {wait} min", "color": "yellow",
                 "detail": f"{current_temp}°C — résa dans {minutes_until} min", "action": "WAIT"}
 
-    # ─── Aucune réservation ───────────────────────────────
     return {"status": "STANDBY", "label": "Standby", "color": "gray",
             "detail": f"{current_temp if current_temp else '--'}°C — aucune résa", "action": None}
 
-# ─── Salles ───────────────────────────────────────────
-@app.route("/api/rooms", methods=["GET"], strict_slashes=False)
+# ─── Routes : rooms ───────────────────────────────────────────
+@app.route("/api/rooms", methods=["GET"])
 def get_rooms():
     c    = db()
     rows = [dict(r) for r in c.execute("SELECT * FROM rooms ORDER BY floor, name").fetchall()]
@@ -219,16 +214,50 @@ def get_rooms():
 
 @app.route("/api/rooms", methods=["POST"])
 def create_room():
-    d   = request.get_json(force=True)
-    c   = db()
+    d         = request.get_json(force=True)
+    sensor_id = d.get("sensor_id") or None
+
+    if not d.get("name"):
+        return jsonify({"error": "name est requis"}), 400
+
+    c = db()
+
+    if sensor_id:
+        if not c.execute("SELECT 1 FROM sensors WHERE sensor_id=?", (sensor_id,)).fetchone():
+            c.close()
+            return jsonify({"error": "Capteur introuvable ou jamais détecté"}), 400
+        if c.execute("SELECT 1 FROM rooms WHERE sensor_id=?", (sensor_id,)).fetchone():
+            c.close()
+            return jsonify({"error": "Capteur déjà associé à une autre salle"}), 409
+
     cur = c.execute(
-        "INSERT INTO rooms (name, capacity, floor, description) VALUES (?,?,?,?)",
-        (d["name"], d.get("capacity", 10), d.get("floor", "RDC"), d.get("description", ""))
+        "INSERT INTO rooms (name, capacity, floor, description, sensor_id) VALUES (?,?,?,?,?)",
+        (d["name"], d.get("capacity", 10), d.get("floor", "RDC"), d.get("description", ""), sensor_id)
     )
     c.commit()
     room_id = cur.lastrowid
     c.close()
-    return jsonify({**d, "id": room_id}), 201
+    return jsonify({"id": room_id, **d, "sensor_id": sensor_id}), 201
+
+@app.route("/api/rooms/<int:rid>", methods=["PATCH"])
+def update_room(rid):
+    d         = request.get_json(force=True)
+    sensor_id = d.get("sensor_id") or None
+
+    c = db()
+
+    if sensor_id:
+        if not c.execute("SELECT 1 FROM sensors WHERE sensor_id=?", (sensor_id,)).fetchone():
+            c.close()
+            return jsonify({"error": "Capteur introuvable ou jamais détecté"}), 400
+        if c.execute("SELECT id FROM rooms WHERE sensor_id=? AND id!=?", (sensor_id, rid)).fetchone():
+            c.close()
+            return jsonify({"error": "Capteur déjà associé à une autre salle"}), 409
+
+    c.execute("UPDATE rooms SET sensor_id=? WHERE id=?", (sensor_id, rid))
+    c.commit()
+    c.close()
+    return jsonify({"ok": True})
 
 @app.route("/api/rooms/<int:rid>", methods=["DELETE"])
 def delete_room(rid):
@@ -238,7 +267,8 @@ def delete_room(rid):
     c.close()
     return "", 204
 
-@app.route("/api/rooms/status")
+# ─── Route : statut des salles (dashboard) ───────────────────
+@app.route("/api/rooms/status", methods=["GET"])
 def rooms_status():
     now  = datetime.utcnow().isoformat()
     soon = (datetime.utcnow() + timedelta(hours=1)).isoformat()
@@ -267,11 +297,21 @@ def rooms_status():
         current_res  = dict(current)  if current  else None
         upcoming_res = dict(upcoming) if upcoming else None
         next_any_res = dict(next_any) if next_any else None
-        current_temp = get_last_temp_for_room(room["id"])
+
+        measure      = get_last_measure_for_room(room["id"])
+        current_temp = measure.get("temp") if measure else None
         decision     = heating_decision(current_temp, upcoming_res, current_res)
 
         result.append({
             **room,
+            # ✅ Champs capteur aplatis pour rétrocompat Angular
+            "temp":                 measure.get("temp")   if measure else None,
+            "hum":                  measure.get("hum")    if measure else None,
+            "co2":                  measure.get("co2")    if measure else None,
+            "motion":               measure.get("motion") if measure else None,
+            # Objet complet disponible si besoin
+            "last_measure":         measure,
+            # Chauffage
             "current_temp":         current_temp,
             "target_temp":          TARGET_TEMP,
             "current_reservation":  current_res,
@@ -282,8 +322,29 @@ def rooms_status():
 
     c.close()
     return jsonify(result)
+# ─── Routes : capteurs ────────────────────────────────────────
+@app.route("/api/sensors/available", methods=["GET"])
+def available_sensors():
+    c = db()
+    rows = c.execute("""
+        SELECT s.sensor_id, s.last_seen
+        FROM sensors s
+        WHERE s.sensor_id NOT IN (
+            SELECT sensor_id FROM rooms WHERE sensor_id IS NOT NULL
+        )
+        ORDER BY s.last_seen DESC
+    """).fetchall()
+    c.close()
+    return jsonify([dict(r) for r in rows])
 
-# ─── Reservations ─────────────────────────────────────
+@app.route("/api/sensors", methods=["GET"])
+def get_sensors():
+    c = db()
+    rows = c.execute("SELECT sensor_id, last_seen FROM sensors ORDER BY last_seen DESC").fetchall()
+    c.close()
+    return jsonify([dict(r) for r in rows])
+
+# ─── Routes : réservations ────────────────────────────────────
 @app.route("/api/reservations", methods=["GET"])
 def get_reservations():
     date    = request.args.get("date")
@@ -318,7 +379,7 @@ def create_reservation():
     """, (d["room_id"], d["start_datetime"], d["end_datetime"])).fetchone()
     if conflict:
         c.close()
-        return jsonify({"error": "Creneau deja reserve pour cette salle"}), 409
+        return jsonify({"error": "Créneau déjà réservé pour cette salle"}), 409
     cur = c.execute(
         "INSERT INTO reservations (room_id, user_name, title, start_datetime, end_datetime, people_count) VALUES (?,?,?,?,?,?)",
         (d["room_id"], d["user_name"], d["title"], d["start_datetime"], d["end_datetime"], d.get("people_count", 1))
@@ -336,17 +397,38 @@ def delete_reservation(rid):
     c.close()
     return "", 204
 
-# ─── Prediction IA ────────────────────────────────────
+# ─── Route : décision chauffage (toutes salles) ───────────────
+@app.route("/api/heating/decision")
+def heating_decision_api():
+    c     = db()
+    rooms = [dict(r) for r in c.execute("SELECT * FROM rooms").fetchall()]
+    c.close()
+    result = []
+    for room in rooms:
+        current_temp = get_last_temp_for_room(room["id"])
+        result.append({
+            "room":         room["name"],
+            "current_temp": current_temp,
+            "decision":     heating_decision(
+                                current_temp,
+                                get_next_reservation(room["id"]),
+                                get_current_reservation(room["id"]))
+        })
+    return jsonify(result)
+
+# ─── Route : prédiction IA ────────────────────────────────────
 @app.route("/api/predict/<int:room_id>")
 def predict(room_id):
     if not AI_READY:
-        return jsonify({"error": "Modele IA non charge"}), 503
+        return jsonify({"error": "Modele IA non chargé"}), 503
 
     measures = [m for m in read_measures()
-                if m.get("room_id") == room_id][-12:]
+                if m.get("sensor_id") == db().execute(
+                    "SELECT sensor_id FROM rooms WHERE id=?", (room_id,)
+                ).fetchone()["sensor_id"]][-12:]
 
     if len(measures) < 12:
-        return jsonify({"error": "Pas assez de donnees (min 12)"}), 400
+        return jsonify({"error": "Pas assez de données (min 12)"}), 400
 
     w    = get_weather()
     rows = []
@@ -386,36 +468,8 @@ def predict(room_id):
         "outdoor_temp":   w["outdoor_temp"],
         "horizon":        "5 minutes"
     })
-    
-@app.route("/api/heating/decision")
-def heating_decision_api():
-    rooms  = [dict(r) for r in db().execute("SELECT * FROM rooms").fetchall()]
-    result = []
-    for room in rooms:
-        # measures     = [m for m in read_measures() if m.get("sensor") == room.get("sensor_id")]
-        room_id  = room["id"]
-        measures = [m for m in read_measures() if m.get("room_id") == room_id]
 
-
-        # Si toujours null, fallback : prend la dernière mesure disponible
-        if not measures:
-            all_measures = read_measures()
-            measures = all_measures  # temporaire pour le POC mono-capteur
-        current_temp = measures[-1]["temp"] if measures else None
-        result.append({
-            "room":         room["name"],
-            "current_temp": current_temp,
-            # "decision":     decide(current_temp,
-            #                     get_next_reservation(room["id"]),
-            #                     get_current_reservation(room["id"]))
-            "decision":     heating_decision(  # ← était decide()
-                                current_temp,
-                                get_next_reservation(room["id"]),
-                                get_current_reservation(room["id"]))
-        })
-    return jsonify(result)
-
-# ─── Serve Angular ────────────────────────────────────
+# ─── Serve Angular ────────────────────────────────────────────
 DIST = os.path.join(os.path.dirname(__file__), "clientApp", "dist", "client-app", "browser")
 
 @app.route("/", defaults={"path": ""})
@@ -427,4 +481,4 @@ def serve_angular(path):
     return send_from_directory(DIST, "index.html")
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)

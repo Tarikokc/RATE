@@ -1,0 +1,266 @@
+<!-- <div class="home-page">
+  <header class="home-header">
+    <h1>RATE <span>Dashboard</span></h1>
+    <p>Système de monitoring intelligent des salles</p>
+  </header>
+
+  @if (loading) {
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Chargement des capteurs…</p>
+    </div>
+  } @else if (flaskDown) {
+    <div class="empty-state">
+      <div class="empty-icon">⚠️</div>
+      <h2>Serveur inaccessible</h2>
+      <p>Impossible de charger les capteurs.</p>
+      <button class="btn-primary" (click)="loadSensors()">Réessayer</button>
+    </div>
+  } @else {
+    <section class="sensors-section">
+      <div class="section-header">
+        <h2>Capteurs enregistrés</h2>
+        <button class="btn-primary" (click)="openForm()">+ Ajouter</button>
+      </div>
+
+      @if (success) {
+        <div class="success-msg">✅ {{ success }}</div>
+      }
+
+      @if (sensors.length > 0) {
+        <div class="sensors-grid">
+          @for (s of sensors; track s.sensor_id) {
+            <div class="sensor-card">
+              <div class="sensor-icon">📡</div>
+              <div class="sensor-info">
+                <strong>{{ s.name }}</strong>
+                <span>{{ s.floor }}</span>
+                <span class="sensor-id">{{ s.sensor_id }}</span>
+                @if (s.description) {
+                  <span class="desc">{{ s.description }}</span>
+                }
+              </div>
+              <button class="btn-delete" (click)="delete(s.id!, s.name)">🗑️</button>
+            </div>
+          }
+        </div>
+
+        <div class="cta">
+          <button class="btn-dashboard" (click)="goToDashboard()">Accéder au Dashboard →</button>
+        </div>
+      }
+    </section>
+  }
+
+  @if (showForm) {
+    <div class="modal-overlay">
+      <div class="modal" (click)="$event.stopPropagation()">
+        <h3>Ajouter un capteur</h3>
+
+        @if (errorMsg) {
+          <div class="error-msg">⚠️ {{ errorMsg }}</div>
+        }
+
+        <label>Nom de la salle *
+          <input [(ngModel)]="form.name" placeholder="ex: Salle A101" />
+        </label>
+
+        <label>Étage *
+          <input [(ngModel)]="form.floor" placeholder="ex: 1er étage" />
+        </label>
+
+        <label>Description
+          <input [(ngModel)]="form.description" placeholder="ex: Salle principale" />
+        </label>
+
+        <label>Capteur détecté *
+          <select [(ngModel)]="form.sensor_id">
+            <option value="">-- Sélectionner un capteur --</option>
+            @for (s of availableSensors; track s.sensor_id) {
+              <option [value]="s.sensor_id">{{ s.sensor_id }}</option>
+            }
+          </select>
+        </label>
+
+        @if (availableSensors.length === 0) {
+          <div class="error-msg">
+            Aucun capteur détecté pour le moment. Branche l’ESP et attends qu’il envoie une mesure.
+          </div>
+        }
+
+        <div class="modal-actions">
+          @if (sensors.length > 0) {
+            <button class="btn-cancel" (click)="closeForm()">Annuler</button>
+          }
+          <button class="btn-primary" [disabled]="availableSensors.length === 0" (click)="submit()">
+            Ajouter
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div> -->
+
+<div class="home-page">
+  <header class="home-header">
+    <h1>RATE <span>Dashboard</span></h1>
+    <p>Système de monitoring intelligent des salles</p>
+  </header>
+
+  @if (loading) {
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Chargement des salles…</p>
+    </div>
+  } @else if (flaskDown) {
+    <div class="empty-state">
+      <div class="empty-icon">⚠️</div>
+      <h2>Serveur inaccessible</h2>
+      <p>Impossible de charger les salles.</p>
+      <button class="btn-primary" (click)="loadSensors()">Réessayer</button>
+    </div>
+  } @else {
+    <section class="sensors-section">
+      <div class="section-header">
+        <h2>Salles configurées</h2>
+        <button class="btn-primary" (click)="openAddForm()">+ Ajouter une salle</button>
+      </div>
+
+      @if (success) {
+        <div class="success-msg">✅ {{ success }}</div>
+      }
+
+      @if (sensors.length === 0) {
+        <div class="empty-state">
+          <div class="empty-icon">🏠</div>
+          <h2>Aucune salle configurée</h2>
+          <p>Ajoutez votre première salle et associez-lui un capteur ESP.</p>
+          <button class="btn-primary" (click)="openAddForm()">+ Ajouter une salle</button>
+        </div>
+      } @else {
+        <div class="sensors-grid">
+          @for (s of sensors; track s.id) {
+            <div
+              class="sensor-card"
+              [class.has-sensor]="!!s.sensor_id"
+              [class.no-sensor-card]="!s.sensor_id"
+              (click)="onCardClick(s)"
+              role="button"
+              tabindex="0"
+              (keydown.enter)="onCardClick(s)"
+            >
+              <div class="sensor-icon">{{ s.sensor_id ? '📡' : '🔌' }}</div>
+              <div class="sensor-info">
+                <strong>{{ s.name }}</strong>
+                <span class="floor">{{ s.floor }}</span>
+                @if (s.sensor_id) {
+                  <span class="sensor-badge">{{ s.sensor_id }}</span>
+                  <span class="action-hint">→ Voir le dashboard</span>
+                } @else {
+                  <span class="no-sensor-badge">Aucun capteur associé</span>
+                  <span class="action-hint warn">Cliquer pour associer un capteur</span>
+                }
+                @if (s.description) {
+                  <span class="desc">{{ s.description }}</span>
+                }
+              </div>
+              <button
+                class="btn-delete"
+                (click)="delete($event, s.id!, s.name)"
+                title="Supprimer la salle"
+                aria-label="Supprimer"
+              >🗑️</button>
+            </div>
+          }
+        </div>
+      }
+    </section>
+  }
+</div>
+
+<!-- ─── Modal : Ajouter une nouvelle salle ─────────────────── -->
+@if (showAddForm) {
+  <div class="modal-overlay" (click)="closeAddForm()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h3>Ajouter une salle</h3>
+
+      @if (addErrorMsg) {
+        <div class="error-msg">⚠️ {{ addErrorMsg }}</div>
+      }
+
+      <label>Nom de la salle *
+        <input [(ngModel)]="addForm.name" placeholder="ex: Salle A101" />
+      </label>
+
+      <label>Étage *
+        <input [(ngModel)]="addForm.floor" placeholder="ex: 1er étage" />
+      </label>
+
+      <label>Description
+        <input [(ngModel)]="addForm.description" placeholder="ex: Salle principale" />
+      </label>
+
+      <label>Capteur ESP détecté *
+        <select [(ngModel)]="addForm.sensor_id">
+          <option value="">-- Sélectionner un capteur --</option>
+          @for (s of availableSensors; track s.sensor_id) {
+            <option [value]="s.sensor_id">{{ s.sensor_id }}</option>
+          }
+        </select>
+      </label>
+
+      @if (availableSensors.length === 0) {
+        <div class="hint-msg">
+          💡 Aucun capteur détecté. Allumez votre ESP8266 et attendez qu'il envoie une mesure.
+        </div>
+      }
+
+      <div class="modal-actions">
+        @if (sensors.length > 0) {
+          <button class="btn-cancel" (click)="closeAddForm()">Annuler</button>
+        }
+        <button class="btn-primary" [disabled]="availableSensors.length === 0" (click)="submitAdd()">
+          Ajouter
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ─── Modal : Associer un capteur (clic carte sans sensor) ── -->
+@if (showAssignModal && selectedRoom) {
+  <div class="modal-overlay" (click)="closeAssignModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h3>Associer un capteur à <span class="teal">{{ selectedRoom.name }}</span></h3>
+      <p class="modal-subtitle">
+        Allumez votre ESP8266, attendez qu'il soit détecté, puis sélectionnez-le.
+      </p>
+
+      @if (assignErrorMsg) {
+        <div class="error-msg">⚠️ {{ assignErrorMsg }}</div>
+      }
+
+      <label>Capteur ESP détecté
+        <select [(ngModel)]="assignSensorId">
+          <option value="">-- Sélectionner un capteur --</option>
+          @for (s of availableSensors; track s.sensor_id) {
+            <option [value]="s.sensor_id">{{ s.sensor_id }}</option>
+          }
+        </select>
+      </label>
+
+      @if (availableSensors.length === 0) {
+        <div class="hint-msg">
+          💡 Aucun capteur disponible. Allumez votre ESP8266.
+        </div>
+      }
+
+      <div class="modal-actions">
+        <button class="btn-cancel" (click)="closeAssignModal()">Annuler</button>
+        <button class="btn-primary" [disabled]="!assignSensorId" (click)="submitAssign()">
+          Associer &amp; voir le dashboard →
+        </button>
+      </div>
+    </div>
+  </div>
+}
