@@ -7,8 +7,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from backend.time_helper import now_local, to_local
 
-DB_FILE    = "rate.db"
-DATA_FILE  = "measures.ndjson"
+DB_FILE    = os.path.join("data", "rate.db")
+DATA_FILE  = os.path.join("data", "measures.ndjson")
 TARGET_TEMP = 20.0
 DEG_PER_HOUR = 2.5
 

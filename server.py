@@ -19,8 +19,8 @@ from backend.time_helper import now_local, to_local
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
-DATA_FILE = "measures.ndjson"
-DB_FILE   = "rate.db"
+DATA_FILE = os.path.join("data", "measures.ndjson")
+DB_FILE   = os.path.join("data", "rate.db")
 
 # ─── IA ───────────────────────────────────────────────────────
 try:
