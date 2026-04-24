@@ -55,13 +55,13 @@ def sim_weather(dt):
         "weather_code": random.choice([0, 1, 2, 3, 61, 71])
     }
 
-START        = datetime.utcnow() - timedelta(days=7)
+START        = now_local() - timedelta(days=7)
 INTERVAL     = timedelta(minutes=5)
 reservations = get_reservations()
 measures     = []
 current_time = START
 
-while current_time < datetime.utcnow():
+while current_time < now_local():
     h          = current_time.hour
     weekday    = current_time.weekday()
     is_weekend = 1 if weekday >= 5 else 0

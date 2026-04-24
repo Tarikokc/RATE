@@ -2,7 +2,10 @@ import openmeteo_requests
 import requests_cache
 from retry_requests import retry
 from datetime import datetime
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
 
+from api.helpers.time_helper import now_local, to_local
 # Coordonnées — changer selon ta ville
 LATITUDE  = 48.8566   # Paris
 LONGITUDE = 2.3522
@@ -15,7 +18,7 @@ _cache = {"data": None, "ts": None}
 
 def get_weather() -> dict:
     """Retourne la météo actuelle. Cache interne 10 min."""
-    now = datetime.utcnow()
+    now = now_local()
 
     if _cache["data"] and _cache["ts"]:
         if (now - _cache["ts"]).total_seconds() < 600:

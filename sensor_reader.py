@@ -1,5 +1,9 @@
 import json, time, random
 from datetime import datetime
+import sys, os 
+sys.path.insert(0, os.path.dirname(__file__))
+
+from api.helpers.time_helper import now_local, to_local
 
 # ── Pins ──────────────────────────────────────────────
 # PIR : GND=6  OUT=8(GPIO14)  VCC=17
@@ -63,7 +67,7 @@ while True:
         "room_id":   ROOM_ID,
         "sensor_id": "rpi5-room-1",
         **data,
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": now_local().isoformat() + "Z"
     }
 
     with open(DB_FILE, "a") as f:
