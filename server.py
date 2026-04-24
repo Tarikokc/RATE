@@ -12,6 +12,10 @@ from flask_cors import CORS
 from weather import get_weather
 from heating_controller import get_next_reservation, get_current_reservation
 
+sys.path.insert(0, os.path.dirname(__file__))
+
+from api.helpers.time_helper import now_local, to_local
+
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
@@ -126,7 +130,7 @@ def receive_measure():
     # Normalise la clé
     data["sensor_id"] = sensor_id
     data.pop("sensor", None)
-    data["timestamp"] = datetime.utcnow().isoformat() + "Z"
+    data["timestamp"] = now_local().isoformat() + "Z"
 
     append_measure(data)
 
@@ -175,7 +179,7 @@ def weather():
 
 # ─── Logique chauffage ────────────────────────────────────────
 def heating_decision(current_temp, upcoming_res, current_res):
-    now = datetime.utcnow()
+    now = now_local()
 
     if current_temp is not None and current_temp > TARGET_TEMP + 5:
         return {"status": "SURCHAUFFE", "label": "Surchauffe ⚠️", "color": "red",
@@ -282,8 +286,8 @@ def delete_room(rid):
 # ─── Route : statut des salles (dashboard) ───────────────────
 @app.route("/api/rooms/status", methods=["GET"])
 def rooms_status():
-    now  = datetime.utcnow().isoformat()
-    soon = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+    now  = now_local().isoformat()
+    soon = (now_local() + timedelta(hours=1)).isoformat()
     c    = db()
     rooms  = [dict(r) for r in c.execute("SELECT * FROM rooms").fetchall()]
     result = []

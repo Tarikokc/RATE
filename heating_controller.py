@@ -1,10 +1,17 @@
 from datetime import datetime, timedelta
 import sqlite3, json
+import pytz
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
+
+from api.helpers.time_helper import now_local, to_local
 
 DB_FILE    = "rate.db"
 DATA_FILE  = "measures.ndjson"
 TARGET_TEMP = 20.0
 DEG_PER_HOUR = 2.5
+
+TZ = pytz.timezone("Europe/Paris")
 
 def get_db():
     conn = sqlite3.connect(DB_FILE)
@@ -12,8 +19,8 @@ def get_db():
     return conn
 
 def get_next_reservation(room_id):
-    now  = datetime.utcnow().isoformat()
-    soon = (datetime.utcnow() + timedelta(hours=2)).isoformat()
+    now  = now_local()
+    soon = (now_local() + timedelta(hours=2)).isoformat()
     c    = get_db()
     row  = c.execute("""
         SELECT * FROM reservations
@@ -24,7 +31,7 @@ def get_next_reservation(room_id):
     return dict(row) if row else None
 
 def get_current_reservation(room_id):
-    now = datetime.utcnow().isoformat()
+    now = now_local().isoformat()
     c   = get_db()
     row = c.execute("""
         SELECT * FROM reservations
@@ -34,7 +41,7 @@ def get_current_reservation(room_id):
     return dict(row) if row else None
 
 def decide(current_temp, upcoming_res, current_res):
-    now = datetime.utcnow()
+    now = now_local()
 
     if current_res:
         end       = datetime.fromisoformat(current_res["end_datetime"].replace("Z",""))

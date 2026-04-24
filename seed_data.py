@@ -12,7 +12,7 @@ ROOMS = [
     {"id": 4, "sensor_id": "rpi5-room-4", "base_temp": 22.4},
 ]
 
-now = datetime.utcnow()
+now = now_local()
 
 # ─── 1. Mesures (48h d'historique, 1 toutes les 5 min) ───
 print("📊 Génération des mesures...")

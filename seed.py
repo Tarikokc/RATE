@@ -80,7 +80,7 @@ test_measures = [
     {"room_id": 4, "sensor_id": "rpi5-room-4", "temp": 31.8, "hum": 40, "co2": 700, "motion": True},
 ]
 
-now = datetime.utcnow()
+now = now_local()
 
 with open(DATA_FILE, "a", encoding="utf-8") as f:
     for m in test_measures:
