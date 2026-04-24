@@ -1,20 +1,18 @@
-import json, time, random
+import json, time, random, requests
 from datetime import datetime
-import sys, os 
+import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 
-from api.helpers.time_helper import now_local, to_local
+from backend.time_helper import now_local
 
-# ── Pins ──────────────────────────────────────────────
-# PIR : GND=6  OUT=8(GPIO14)  VCC=17
-# SCD41 : GND=14  VDD=1  SCL=5(GPIO3)  SDA=3(GPIO2)
+# ── Config ────────────────────────────────────────────
+PIR_PIN   = 14
+ROOM_ID   = 1
+SENSOR_ID = "rpi5-room-1"
+INTERVAL  = 10
+FLASK_URL = os.getenv("API_URL", "http://localhost:5000") + "/api/measures"
 
-PIR_PIN  = 14
-ROOM_ID  = 1
-INTERVAL = 10
-DB_FILE  = "measures.ndjson"
-
-# ── Init ──────────────────────────────────────────────
+# ── Init capteurs ─────────────────────────────────────
 try:
     import board, busio
     import RPi.GPIO as GPIO
@@ -29,13 +27,13 @@ try:
 
     SIMULATION = False
     print("✅ SCD41 + PIR GPIO14 OK")
-    time.sleep(5) 
+    time.sleep(5)
 
 except Exception as e:
     SIMULATION = True
     print(f"⚠️  Mode simulation ({e})")
 
-# ── Lecture ───────────────────────────────────────────
+# ── Lecture capteur ───────────────────────────────────
 def read():
     if SIMULATION:
         h    = datetime.now().hour
@@ -47,7 +45,6 @@ def read():
             "motion": False
         }
 
-    # SCD41 : données dispo uniquement quand data_ready = True
     while not sensor.data_ready:
         time.sleep(0.5)
 
@@ -59,24 +56,27 @@ def read():
     }
 
 # ── Boucle ────────────────────────────────────────────
-print(f"🌡️  Lecture toutes les {INTERVAL}s\n")
+print(f"🌡️  Envoi toutes les {INTERVAL}s → {FLASK_URL}\n")
 
 while True:
     data    = read()
-    measure = {
+    payload = {
+        "sensor_id": SENSOR_ID,
         "room_id":   ROOM_ID,
-        "sensor_id": "rpi5-room-1",
-        **data,
-        "timestamp": now_local().isoformat() + "Z"
+        **data
     }
 
-    with open(DB_FILE, "a") as f:
-        f.write(json.dumps(measure) + "\n")
+    try:
+        r = requests.post(FLASK_URL, json=payload, timeout=5)
+        status = r.status_code
+    except Exception as e:
+        status = f"ERR ({e})"
 
     print(f"[{datetime.now().strftime('%H:%M:%S')}]  "
           f"T:{data['temp']}°C  "
           f"H:{data['hum']}%  "
           f"CO2:{data['co2']}ppm  "
-          f"PIR:{'OUI' if data['motion'] else 'non'}")
+          f"PIR:{'OUI' if data['motion'] else 'non'}  "
+          f"→ HTTP {status}")
 
     time.sleep(INTERVAL)

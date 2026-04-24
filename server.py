@@ -19,8 +19,7 @@ from backend.time_helper import now_local, to_local
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
-DATA_FILE = os.path.join("data", "measures.ndjson")
-DB_FILE   = os.path.join("data", "rate.db")
+DB_FILE = os.path.join("data", "rate.db")
 
 # ─── IA ───────────────────────────────────────────────────────
 try:
@@ -78,6 +77,20 @@ def init_db():
             created_at     TEXT    DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS measures (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            sensor_id TEXT    NOT NULL,
+            room_id   INTEGER,
+            temp      REAL,
+            hum       REAL,
+            co2       REAL,
+            motion    INTEGER DEFAULT 0,
+            timestamp TEXT    NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_measures_sensor  ON measures(sensor_id);
+        CREATE INDEX IF NOT EXISTS idx_measures_room_ts ON measures(room_id, timestamp);
     """)
     c.commit()
     c.close()
@@ -87,35 +100,64 @@ init_db()
 
 # ─── Mesures ──────────────────────────────────────────────────
 def append_measure(m):
-    with open(DATA_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(m) + "\n")
+    """Insère une mesure dans la table SQLite measures."""
+    c = db()
+    c.execute(
+        "INSERT INTO measures (sensor_id, room_id, temp, hum, co2, motion, timestamp) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            m.get("sensor_id"),
+            m.get("room_id"),
+            m.get("temp"),
+            m.get("hum"),
+            m.get("co2"),
+            1 if m.get("motion") else 0,
+            m.get("timestamp", now_local().isoformat() + "Z")
+        )
+    )
+    c.commit()
+    c.close()
 
 
-def read_measures():
-    if not os.path.exists(DATA_FILE):
-        return []
-    out = []
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                try:    out.append(json.loads(line))
-                except: pass
-    return out
+def read_measures(sensor_id=None, room_id=None, limit=None):
+    """Lit les mesures depuis SQLite. Filtres optionnels : sensor_id, room_id, limit."""
+    c = db()
+    q = "SELECT * FROM measures WHERE 1=1"
+    params = []
+    if sensor_id:
+        q += " AND sensor_id=?"
+        params.append(sensor_id)
+    if room_id:
+        q += " AND room_id=?"
+        params.append(room_id)
+    q += " ORDER BY timestamp ASC"
+    if limit:
+        q += f" LIMIT {int(limit)}"
+    rows = [dict(r) for r in c.execute(q, params).fetchall()]
+    c.close()
+    # Convertit motion 0/1 → bool pour rétrocompat
+    for r in rows:
+        r["motion"] = bool(r["motion"])
+    return rows
 
 
 def get_last_measure_for_room(room_id):
     c = db()
     row = c.execute("SELECT sensor_id FROM rooms WHERE id=?", (room_id,)).fetchone()
-    c.close()
     if not row or not row["sensor_id"]:
+        c.close()
         return None
     sid = row["sensor_id"]
-    for m in reversed(read_measures()):
-        # Rétrocompat : accepte "sensor_id" ET "sensor"
-        if m.get("sensor_id") == sid or m.get("sensor") == sid:
-            return m
-    return None
+    m = c.execute(
+        "SELECT * FROM measures WHERE sensor_id=? ORDER BY timestamp DESC LIMIT 1",
+        (sid,)
+    ).fetchone()
+    c.close()
+    if not m:
+        return None
+    result = dict(m)
+    result["motion"] = bool(result["motion"])
+    return result
 
 
 def get_last_temp_for_room(room_id):
@@ -123,29 +165,44 @@ def get_last_temp_for_room(room_id):
     return m.get("temp") if m else None
 
 
-# ─── Route : réception mesures ESP ────────────────────────────
-@app.route("/measure", methods=["POST"])
+# ─── Route : réception mesures ESP / RPi ──────────────────────
+@app.route("/api/measures", methods=["POST"])
 def receive_measure():
     data = request.get_json(force=True)
 
-    # Supporte "sensor" ou "sensor_id" dans le payload ESP
+    # Supporte "sensor" (ancien Arduino) ou "sensor_id"
     sensor_id = data.get("sensor_id") or data.get("sensor")
     if not sensor_id:
         return jsonify({"error": "sensor_id manquant"}), 400
 
-    # Normalise la clé
-    data["sensor_id"] = sensor_id
-    data.pop("sensor", None)
-    data["timestamp"] = now_local().isoformat() + "Z"
+    timestamp = now_local().isoformat() + "Z"
 
-    append_measure(data)
+    # Résout le room_id depuis la table rooms si non fourni
+    room_id = data.get("room_id")
+    if not room_id:
+        c = db()
+        row = c.execute("SELECT id FROM rooms WHERE sensor_id=?", (sensor_id,)).fetchone()
+        c.close()
+        room_id = row["id"] if row else None
 
-    # Enregistre / met à jour le capteur dans la table sensors
+    measure = {
+        "sensor_id": sensor_id,
+        "room_id":   room_id,
+        "temp":      data.get("temp"),
+        "hum":       data.get("hum"),
+        "co2":       data.get("co2"),
+        "motion":    data.get("motion", False),
+        "timestamp": timestamp
+    }
+
+    append_measure(measure)
+
+    # Enregistre / met à jour le capteur dans sensors
     c = db()
     c.execute(
         "INSERT INTO sensors(sensor_id, last_seen) VALUES(?,?) "
         "ON CONFLICT(sensor_id) DO UPDATE SET last_seen=excluded.last_seen",
-        (sensor_id, data["timestamp"])
+        (sensor_id, timestamp)
     )
     c.commit()
     c.close()
@@ -153,27 +210,26 @@ def receive_measure():
     return jsonify({"ok": True}), 200
 
 
-# ─── Route : mesures filtrées par capteur ─────────────────────
+# ─── Route : mesures filtrées ─────────────────────────────────
 @app.route("/api/measures", methods=["GET"])
 def get_measures_by_sensor():
     sensor_id = request.args.get("sensor_id")
-    all_measures = read_measures()
-    if sensor_id:
-        all_measures = [
-            m for m in all_measures
-            if (m.get("sensor_id") or m.get("sensor")) == sensor_id
-        ]
-    return jsonify(all_measures)
+    room_id   = request.args.get("room_id")
+    limit     = request.args.get("limit")
+    return jsonify(read_measures(sensor_id=sensor_id, room_id=room_id, limit=limit))
 
 
 # ─── Routes : last / all ──────────────────────────────────────
 @app.route("/api/last")
 def api_last():
-    mesures = read_measures()
-    if not mesures:
+    c = db()
+    row = c.execute("SELECT * FROM measures ORDER BY timestamp DESC LIMIT 1").fetchone()
+    c.close()
+    if not row:
         return jsonify({"error": "no data"}), 404
-    mesure  = mesures[-1]
-    meteo   = get_weather()
+    mesure = dict(row)
+    mesure["motion"] = bool(mesure["motion"])
+    meteo  = get_weather()
     return jsonify({**mesure, **meteo})
 
 
@@ -336,14 +392,11 @@ def rooms_status():
 
         result.append({
             **room,
-            # ✅ Champs capteur aplatis pour rétrocompat Angular
             "temp":                 measure.get("temp")   if measure else None,
             "hum":                  measure.get("hum")    if measure else None,
             "co2":                  measure.get("co2")    if measure else None,
             "motion":               measure.get("motion") if measure else None,
-            # Objet complet disponible si besoin
             "last_measure":         measure,
-            # Chauffage
             "current_temp":         current_temp,
             "target_temp":          TARGET_TEMP,
             "current_reservation":  current_res,
@@ -462,10 +515,13 @@ def predict(room_id):
     if not AI_READY:
         return jsonify({"error": "Modele IA non chargé"}), 503
 
-    measures = [m for m in read_measures()
-                if m.get("sensor_id") == db().execute(
-                    "SELECT sensor_id FROM rooms WHERE id=?", (room_id,)
-                ).fetchone()["sensor_id"]][-12:]
+    c   = db()
+    row = c.execute("SELECT sensor_id FROM rooms WHERE id=?", (room_id,)).fetchone()
+    c.close()
+    if not row or not row["sensor_id"]:
+        return jsonify({"error": "Salle sans capteur"}), 400
+
+    measures = read_measures(sensor_id=row["sensor_id"], limit=12)
 
     if len(measures) < 12:
         return jsonify({"error": "Pas assez de données (min 12)"}), 400

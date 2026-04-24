@@ -5,7 +5,8 @@
 
 const char* ssid      = "iPhone de Tarik";
 const char* password  = "TarikArt942003";
-const char* serverUrl = "http://172.20.10.3:5000/measure";
+// ↓ Seul endroit à modifier si l'IP change
+const char* serverUrl = "http://172.20.10.3:5000/api/measures";
 
 #define BME_SDA D6
 #define BME_SCL D5
@@ -27,7 +28,7 @@ void setup() {
   scd4x.begin(Wire, 0x62);
   scd4x.startPeriodicMeasurement();
   Serial.println("SCD40 démarré");
-  delay(5000); // 1ère mesure prend 5s
+  delay(5000);
 }
 
 void loop() {
@@ -40,7 +41,7 @@ void loop() {
 
   if (WiFi.status() == WL_CONNECTED) {
     String payload = "{";
-    payload += "\"sensor\":\"esp8266-1\",";
+    payload += "\"sensor_id\":\"esp8266-1\",";
     payload += "\"co2\":"    + String(co2)        + ",";
     payload += "\"temp\":"   + String(temp, 2)    + ",";
     payload += "\"hum\":"    + String(hum, 2)     + ",";
