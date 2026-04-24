@@ -55,7 +55,7 @@ export class HomeComponent implements OnDestroy {
       next: (s) => {
         this.sensors = s;
         this.loading = false;
-        this.showAddForm = s.length === 0;
+        if (s.length === 0) this.openAddForm();
         this.cdr.detectChanges();
       },
       error: () => {
