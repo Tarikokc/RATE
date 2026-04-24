@@ -9,12 +9,12 @@ import numpy as np
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
-from weather import get_weather
-from heating_controller import get_next_reservation, get_current_reservation
+from backend.weather import get_weather
+from backend.heating_controller import get_next_reservation, get_current_reservation
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from api.helpers.time_helper import now_local, to_local
+from backend.time_helper import now_local, to_local
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
@@ -49,6 +49,7 @@ def db():
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def init_db():
     c = db()
     c.executescript("""
@@ -81,12 +82,14 @@ def init_db():
     c.commit()
     c.close()
 
+
 init_db()
 
 # ─── Mesures ──────────────────────────────────────────────────
 def append_measure(m):
     with open(DATA_FILE, "a", encoding="utf-8") as f:
         f.write(json.dumps(m) + "\n")
+
 
 def read_measures():
     if not os.path.exists(DATA_FILE):
@@ -99,6 +102,7 @@ def read_measures():
                 try:    out.append(json.loads(line))
                 except: pass
     return out
+
 
 def get_last_measure_for_room(room_id):
     c = db()
@@ -113,9 +117,11 @@ def get_last_measure_for_room(room_id):
             return m
     return None
 
+
 def get_last_temp_for_room(room_id):
     m = get_last_measure_for_room(room_id)
     return m.get("temp") if m else None
+
 
 # ─── Route : réception mesures ESP ────────────────────────────
 @app.route("/measure", methods=["POST"])
@@ -158,6 +164,8 @@ def get_measures_by_sensor():
             if (m.get("sensor_id") or m.get("sensor")) == sensor_id
         ]
     return jsonify(all_measures)
+
+
 # ─── Routes : last / all ──────────────────────────────────────
 @app.route("/api/last")
 def api_last():
@@ -168,14 +176,17 @@ def api_last():
     meteo   = get_weather()
     return jsonify({**mesure, **meteo})
 
+
 @app.route("/api/all")
 def api_all():
     return jsonify(read_measures())
+
 
 # ─── Météo ────────────────────────────────────────────────────
 @app.route("/api/weather")
 def weather():
     return jsonify(get_weather())
+
 
 # ─── Logique chauffage ────────────────────────────────────────
 def heating_decision(current_temp, upcoming_res, current_res):
@@ -220,6 +231,7 @@ def heating_decision(current_temp, upcoming_res, current_res):
     return {"status": "STANDBY", "label": "Standby", "color": "gray",
             "detail": f"{current_temp if current_temp else '--'}°C — aucune résa", "action": None}
 
+
 # ─── Routes : rooms ───────────────────────────────────────────
 @app.route("/api/rooms", methods=["GET"])
 def get_rooms():
@@ -227,6 +239,7 @@ def get_rooms():
     rows = [dict(r) for r in c.execute("SELECT * FROM rooms ORDER BY floor, name").fetchall()]
     c.close()
     return jsonify(rows)
+
 
 @app.route("/api/rooms", methods=["POST"])
 def create_room():
@@ -255,6 +268,7 @@ def create_room():
     c.close()
     return jsonify({"id": room_id, **d, "sensor_id": sensor_id}), 201
 
+
 @app.route("/api/rooms/<int:rid>", methods=["PATCH"])
 def update_room(rid):
     d         = request.get_json(force=True)
@@ -275,6 +289,7 @@ def update_room(rid):
     c.close()
     return jsonify({"ok": True})
 
+
 @app.route("/api/rooms/<int:rid>", methods=["DELETE"])
 def delete_room(rid):
     c = db()
@@ -282,6 +297,7 @@ def delete_room(rid):
     c.commit()
     c.close()
     return "", 204
+
 
 # ─── Route : statut des salles (dashboard) ───────────────────
 @app.route("/api/rooms/status", methods=["GET"])
@@ -338,6 +354,8 @@ def rooms_status():
 
     c.close()
     return jsonify(result)
+
+
 # ─── Routes : capteurs ────────────────────────────────────────
 @app.route("/api/sensors/available", methods=["GET"])
 def available_sensors():
@@ -353,12 +371,14 @@ def available_sensors():
     c.close()
     return jsonify([dict(r) for r in rows])
 
+
 @app.route("/api/sensors", methods=["GET"])
 def get_sensors():
     c = db()
     rows = c.execute("SELECT sensor_id, last_seen FROM sensors ORDER BY last_seen DESC").fetchall()
     c.close()
     return jsonify([dict(r) for r in rows])
+
 
 # ─── Routes : réservations ────────────────────────────────────
 @app.route("/api/reservations", methods=["GET"])
@@ -384,6 +404,7 @@ def get_reservations():
     c.close()
     return jsonify(rows)
 
+
 @app.route("/api/reservations", methods=["POST"])
 def create_reservation():
     d = request.get_json(force=True)
@@ -405,6 +426,7 @@ def create_reservation():
     c.close()
     return jsonify({**d, "id": new_id}), 201
 
+
 @app.route("/api/reservations/<int:rid>", methods=["DELETE"])
 def delete_reservation(rid):
     c = db()
@@ -412,6 +434,7 @@ def delete_reservation(rid):
     c.commit()
     c.close()
     return "", 204
+
 
 # ─── Route : décision chauffage (toutes salles) ───────────────
 @app.route("/api/heating/decision")
@@ -431,6 +454,7 @@ def heating_decision_api():
                                 get_current_reservation(room["id"]))
         })
     return jsonify(result)
+
 
 # ─── Route : prédiction IA ────────────────────────────────────
 @app.route("/api/predict/<int:room_id>")
@@ -485,8 +509,10 @@ def predict(room_id):
         "horizon":        "5 minutes"
     })
 
+
 # ─── Serve Angular ────────────────────────────────────────────
 DIST = os.path.join(os.path.dirname(__file__), "clientApp", "dist", "client-app", "browser")
+
 
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
@@ -495,6 +521,7 @@ def serve_angular(path):
     if path and os.path.exists(full):
         return send_from_directory(DIST, path)
     return send_from_directory(DIST, "index.html")
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
