@@ -6,7 +6,7 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from backend.time_helper import now_local, to_local
+from app.time_helper import now_local, to_local
 
 # Coordonnées — changer selon ta ville
 LATITUDE  = 48.8566   # Paris
