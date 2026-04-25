@@ -3,7 +3,7 @@ from datetime import datetime
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 
-from backend.time_helper import now_local
+from app.time_helper import now_local
 
 # ── Config ────────────────────────────────────────────
 PIR_PIN   = 14

@@ -3,7 +3,7 @@
 # import pytz
 # import sys, os
 # sys.path.insert(0, os.path.dirname(__file__))
-# from backend.database import get_db, init_db
+# from app.database import get_db, init_db
 # from api.helpers.time_helper import now_local, to_local
 
 # DB_FILE    = "rate.db"
@@ -77,8 +77,8 @@
 #             "detail": f"{current_temp or '--'}°C — aucune réservation"}
 
 from datetime import datetime, timedelta
-from backend.database import get_db
-from backend.time_helper import now_local
+from app.database import get_db
+from app.time_helper import now_local
 
 TARGET_TEMP  = 20.0
 DEG_PER_HOUR = 2.5
