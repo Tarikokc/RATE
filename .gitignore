@@ -10,6 +10,10 @@ rate.db
 measures.ndjson
 .cache.sqlite
 
+# Dossier de données (contenu ignoré, structure gardée)
+data/*
+!data/.gitkeep
+
 # Modèle IA & scalers (trop lourds pour git)
 *.tflite
 *.pkl
@@ -18,8 +22,10 @@ measures.ndjson
 sketch_dec16a/config.h
 
 # Angular build
-clientApp/dist/
 clientApp/node_modules/
 
 # VS Code
 .vscode/
+
+# Fichiers d'environnement
+.env

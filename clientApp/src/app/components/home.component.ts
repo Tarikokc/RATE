@@ -1,4 +1,4 @@
-import { Component, inject, afterNextRender, ChangeDetectorRef } from '@angular/core';
+import { Component, inject, afterNextRender, ChangeDetectorRef, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { SensorService, Sensor, AvailableSensor } from '../services/sensor.service';
@@ -11,10 +11,11 @@ import { take } from 'rxjs/operators';
   templateUrl: './home.component.html',
   styleUrl: './home.component.css',
 })
-export class HomeComponent {
+export class HomeComponent implements OnDestroy {
   private svc = inject(SensorService);
   private router = inject(Router);
   private cdr = inject(ChangeDetectorRef);
+  private pollInterval: any = null;
 
   sensors: Sensor[] = [];
   availableSensors: AvailableSensor[] = [];
@@ -39,6 +40,10 @@ export class HomeComponent {
     });
   }
 
+  ngOnDestroy() {
+    this.stopSensorPolling();
+  }
+
   // ─── Chargement ──────────────────────────────────────
 
   loadSensors() {
@@ -50,7 +55,7 @@ export class HomeComponent {
       next: (s) => {
         this.sensors = s;
         this.loading = false;
-        this.showAddForm = s.length === 0;
+        if (s.length === 0) this.openAddForm();
         this.cdr.detectChanges();
       },
       error: () => {
@@ -76,6 +81,20 @@ export class HomeComponent {
     });
   }
 
+  // Lance un polling toutes les 5s tant qu'un modal est ouvert
+  private startSensorPolling() {
+    this.loadAvailableSensors();
+    this.pollInterval = setInterval(() => this.loadAvailableSensors(), 5000);
+  }
+
+  private stopSensorPolling() {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
+    this.availableSensors = [];
+  }
+
   // ─── Clic sur une carte ──────────────────────────────
   // sensor associé → /dashboard?room=id  |  pas de sensor → modal assignation
 
@@ -93,14 +112,14 @@ export class HomeComponent {
     this.showAddForm = true;
     this.addErrorMsg = '';
     this.addForm = { name: '', floor: '', description: '', sensor_id: '' };
-    this.loadAvailableSensors();
+    this.startSensorPolling();
   }
 
   closeAddForm() {
     if (this.sensors.length === 0) return;
     this.showAddForm = false;
     this.addForm = { name: '', floor: '', description: '', sensor_id: '' };
-    this.availableSensors = [];
+    this.stopSensorPolling();
   }
 
   submitAdd() {
@@ -119,7 +138,7 @@ export class HomeComponent {
         this.addErrorMsg = '';
         this.showAddForm = false;
         this.addForm = { name: '', floor: '', description: '', sensor_id: '' };
-        this.availableSensors = [];
+        this.stopSensorPolling();
         this.loadSensors();
       },
       error: (err) => {
@@ -135,14 +154,14 @@ export class HomeComponent {
     this.assignSensorId = '';
     this.assignErrorMsg = '';
     this.showAssignModal = true;
-    this.loadAvailableSensors();
+    this.startSensorPolling();
   }
 
   closeAssignModal() {
     this.showAssignModal = false;
     this.selectedRoom = null;
     this.assignSensorId = '';
-    this.availableSensors = [];
+    this.stopSensorPolling();
   }
 
   submitAssign() {
@@ -159,7 +178,7 @@ export class HomeComponent {
       .pipe(take(1))
       .subscribe({
         next: () => {
-          // Redirige directement vers le dashboard de la salle
+          this.stopSensorPolling();
           this.router.navigate(['/dashboard'], {
             queryParams: { room: this.selectedRoom!.id }
           });
@@ -173,7 +192,7 @@ export class HomeComponent {
   // ─── Suppression ─────────────────────────────────────
 
   delete(event: Event, id: number, name: string) {
-    event.stopPropagation(); // empêche le clic de buller vers onCardClick
+    event.stopPropagation();
     if (!confirm(`Supprimer la salle "${name}" ?`)) return;
     this.svc.delete(id).pipe(take(1)).subscribe({
       next: () => this.loadSensors(),

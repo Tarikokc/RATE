@@ -6,7 +6,7 @@
 const char* ssid      = "iPhone de Tarik";
 const char* password  = "TarikArt942003";
 // ↓ Seul endroit à modifier si l'IP change
-const char* serverUrl = "http://172.20.10.3:5000/api/measures";
+const char* serverUrl = "http://172.20.10.2:5000/api/measures";
 
 #define BME_SDA D6
 #define BME_SCL D5

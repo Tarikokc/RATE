@@ -131,3 +131,6 @@ Le projet respecte une contrainte "Low-Cost" :
 1.  Réception et configuration du Raspberry Pi (Randy).
 2.  Mise en conteneur Docker de l'application Flask (Randy/Tarik).
 3.  Amélioration esthétique du Dashboard avec graphiques historiques (Anthony).
+
+
+scp -r dist/ pi@TON_IP_PI:/home/pi/RATE/clientApp/
