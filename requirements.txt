@@ -1,5 +1,10 @@
 flask
+flask-cors
+python-dotenv
 openmeteo-requests
 requests-cache
 retry-requests
 pytz
+tflite-runtime   
+gunicorn        
+numpy
