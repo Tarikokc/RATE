@@ -22,7 +22,6 @@ data/*
 sketch_dec16a/config.h
 
 # Angular build
-!clientApp/dist/
 clientApp/node_modules/
 
 # VS Code
