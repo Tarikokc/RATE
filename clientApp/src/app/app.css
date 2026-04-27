@@ -2,7 +2,7 @@
 
 .dashboard {
   min-height: 100vh;
-  padding: 2rem 1.5rem;
+  padding: clamp(1rem, 4vw, 2rem) clamp(0.75rem, 3vw, 1.5rem);
   max-width: 860px;
   margin: 0 auto;
 }
@@ -12,13 +12,20 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
   padding-bottom: 1.25rem;
   border-bottom: 1px solid var(--border);
 }
-.header-title { display: flex; align-items: center; gap: 0.75rem; }
+.header-title { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .header-icon  { font-size: 1.5rem; }
-h1 { margin: 0; font-size: 1.2rem; font-weight: 600; letter-spacing: -0.02em; }
+h1 {
+  margin: 0;
+  font-size: clamp(1rem, 4vw, 1.2rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
 
 /* Status badge */
 .status-badge {
@@ -27,16 +34,18 @@ h1 { margin: 0; font-size: 1.2rem; font-weight: 600; letter-spacing: -0.02em; }
   gap: 0.45rem;
   padding: 0.3rem 0.9rem;
   border-radius: 999px;
-  font-size: 0.78rem;
+  font-size: clamp(0.72rem, 2vw, 0.78rem);
   font-weight: 500;
   background: var(--bg-card);
   border: 1px solid var(--border);
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 .status-dot {
   width: 7px; height: 7px;
   border-radius: 50%;
   background: var(--text-secondary);
+  flex-shrink: 0;
 }
 .status-online .status-dot {
   background: #10b981;
@@ -53,21 +62,22 @@ h1 { margin: 0; font-size: 1.2rem; font-weight: 600; letter-spacing: -0.02em; }
 /* Cards */
 .cards-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: clamp(0.75rem, 2.5vw, 1rem);
 }
 
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 1.5rem 1.5rem 1.25rem;
+  padding: clamp(1rem, 3.5vw, 1.5rem) clamp(1rem, 3.5vw, 1.5rem) clamp(0.9rem, 3vw, 1.25rem);
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
   position: relative;
   overflow: hidden;
   transition: transform 0.2s ease, border-color 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 .card::before {
   content: '';
@@ -81,16 +91,21 @@ h1 { margin: 0; font-size: 1.2rem; font-weight: 600; letter-spacing: -0.02em; }
   border-color: rgba(255,255,255,0.13);
 }
 
-.card-icon  { font-size: 1.75rem; margin-bottom: 0.25rem; }
+.card-icon  { font-size: clamp(1.4rem, 4.5vw, 1.75rem); margin-bottom: 0.25rem; }
 .card-value {
-  font-size: 2.4rem;
+  font-size: clamp(1.8rem, 7vw, 2.4rem);
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.04em;
 }
-.card-unit  { font-size: 1rem; font-weight: 400; color: var(--text-secondary); margin-left: 0.2rem; }
+.card-unit  {
+  font-size: clamp(0.85rem, 2.5vw, 1rem);
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-left: 0.2rem;
+}
 .card-label {
-  font-size: 0.75rem;
+  font-size: clamp(0.65rem, 2vw, 0.75rem);
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -109,7 +124,6 @@ h1 { margin: 0; font-size: 1.2rem; font-weight: 600; letter-spacing: -0.02em; }
 .card-pres  .card-value { color: #10b981; }
 .card-motion .card-value{ color: #818cf8; }
 
-/* Mouvement actif */
 .motion-active { border-color: rgba(244,63,94,0.3); background: rgba(244,63,94,0.05); }
 .motion-active::before   { background: linear-gradient(90deg, #f43f5e, #f97316); }
 .motion-active .card-value { color: #f43f5e; }
@@ -118,10 +132,12 @@ h1 { margin: 0; font-size: 1.2rem; font-weight: 600; letter-spacing: -0.02em; }
 .dashboard-footer {
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-top: 1.5rem;
   padding-top: 1rem;
   border-top: 1px solid var(--border);
-  font-size: 0.78rem;
+  font-size: clamp(0.7rem, 2vw, 0.78rem);
   color: var(--text-secondary);
 }
 
@@ -144,31 +160,12 @@ h1 { margin: 0; font-size: 1.2rem; font-weight: 600; letter-spacing: -0.02em; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Responsive mobile */
+/* ── Responsive mobile ── */
 @media (max-width: 480px) {
-  .dashboard {
-    padding: 1.25rem 1rem;
-  }
-  .dashboard-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.75rem;
-  }
-  h1 {
-    font-size: 1rem;
-  }
-  .cards-grid {
-    grid-template-columns: 1fr;
-  }
-  .card {
-    padding: 1.25rem 1.25rem 1rem;
-  }
-  .card-value {
-    font-size: 2rem;
-  }
-  .dashboard-footer {
-    flex-direction: column;
-    gap: 0.5rem;
-    align-items: flex-start;
-  }
+  .dashboard-header { flex-direction: column; align-items: flex-start; }
+  .cards-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 340px) {
+  .cards-grid { grid-template-columns: 1fr; }
 }
