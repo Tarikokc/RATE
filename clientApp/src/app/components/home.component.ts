@@ -2,6 +2,7 @@ import { Component, inject, afterNextRender, ChangeDetectorRef, OnDestroy } from
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { SensorService, Sensor, AvailableSensor } from '../services/sensor.service';
+import { ClientConfigService, RoomTemplate } from '../services/client-config.service';
 import { take } from 'rxjs/operators';
 
 @Component({
@@ -12,23 +13,34 @@ import { take } from 'rxjs/operators';
   styleUrl: './home.component.css',
 })
 export class HomeComponent implements OnDestroy {
-  private svc = inject(SensorService);
-  private router = inject(Router);
-  private cdr = inject(ChangeDetectorRef);
+  private svc        = inject(SensorService);
+  private configSvc  = inject(ClientConfigService);
+  private router     = inject(Router);
+  private cdr        = inject(ChangeDetectorRef);
   private pollInterval: any = null;
 
   sensors: Sensor[] = [];
   availableSensors: AvailableSensor[] = [];
   loading = true;
-  flaskDown = true;
+  flaskDown = false;
   success = '';
+
+  // Nom de l'organisation (depuis config)
+  orgName = 'RATE Dashboard';
+  orgSubtitle = 'Système de monitoring intelligent des salles';
+
+  // Templates de salles depuis la config (pour import rapide)
+  roomTemplates: RoomTemplate[] = [];
+  showImportModal = false;
+  importLoading = false;
+  importSuccess = '';
 
   // Modal : ajouter une nouvelle salle
   showAddForm = false;
   addErrorMsg = '';
   addForm: Sensor = { name: '', floor: '', description: '', sensor_id: '' };
 
-  // Modal : associer un capteur à une salle existante (clic carte sans sensor)
+  // Modal : associer un capteur
   showAssignModal = false;
   assignErrorMsg = '';
   selectedRoom: Sensor | null = null;
@@ -36,13 +48,27 @@ export class HomeComponent implements OnDestroy {
 
   constructor() {
     afterNextRender(() => {
+      // Charge la config en parallèle des salles
+      this.configSvc.getConfig().subscribe({
+        next: (cfg) => {
+          this.orgName     = cfg.organisation.name;
+          this.orgSubtitle = cfg.organisation.type === 'school'
+            ? 'Monitoring qualité de l\'air — Établissement scolaire'
+            : cfg.organisation.type === 'admin'
+            ? 'Monitoring qualité de l\'air — Administration publique'
+            : cfg.organisation.type === 'health'
+            ? 'Monitoring qualité de l\'air — Établissement de santé'
+            : 'Système de monitoring intelligent des salles';
+          this.roomTemplates = cfg.rooms;
+          this.cdr.detectChanges();
+        },
+        error: () => { /* garde les valeurs par défaut */ }
+      });
       this.loadSensors();
     });
   }
 
-  ngOnDestroy() {
-    this.stopSensorPolling();
-  }
+  ngOnDestroy() { this.stopSensorPolling(); }
 
   // ─── Chargement ──────────────────────────────────────
 
@@ -70,33 +96,62 @@ export class HomeComponent implements OnDestroy {
 
   loadAvailableSensors() {
     this.svc.getAvailableSensors().pipe(take(1)).subscribe({
-      next: (list) => {
-        this.availableSensors = list;
-        this.cdr.detectChanges();
-      },
-      error: () => {
-        this.availableSensors = [];
-        this.cdr.detectChanges();
-      },
+      next: (list) => { this.availableSensors = list; this.cdr.detectChanges(); },
+      error: ()     => { this.availableSensors = []; this.cdr.detectChanges(); },
     });
   }
 
-  // Lance un polling toutes les 5s tant qu'un modal est ouvert
   private startSensorPolling() {
     this.loadAvailableSensors();
     this.pollInterval = setInterval(() => this.loadAvailableSensors(), 5000);
   }
 
   private stopSensorPolling() {
-    if (this.pollInterval) {
-      clearInterval(this.pollInterval);
-      this.pollInterval = null;
-    }
+    if (this.pollInterval) { clearInterval(this.pollInterval); this.pollInterval = null; }
     this.availableSensors = [];
   }
 
-  // ─── Clic sur une carte ──────────────────────────────
-  // sensor associé → /dashboard?room=id  |  pas de sensor → modal assignation
+  // ─── Import salles depuis config ─────────────────────
+
+  openImportModal() {
+    this.showImportModal = true;
+    this.importSuccess = '';
+  }
+
+  closeImportModal() {
+    this.showImportModal = false;
+  }
+
+  importAllRooms() {
+    if (!this.roomTemplates.length) return;
+    this.importLoading = true;
+    let done = 0;
+    const total = this.roomTemplates.length;
+
+    this.roomTemplates.forEach(t => {
+      const room: Sensor = { name: t.name, floor: t.floor, description: t.description, sensor_id: '', capacity: t.capacity };
+      this.svc.create(room).pipe(take(1)).subscribe({
+        next: () => {
+          done++;
+          if (done === total) {
+            this.importLoading = false;
+            this.importSuccess = `${total} salles importées avec succès !`;
+            this.showImportModal = false;
+            this.loadSensors();
+          }
+        },
+        error: () => {
+          done++;
+          if (done === total) {
+            this.importLoading = false;
+            this.loadSensors();
+          }
+        }
+      });
+    });
+  }
+
+  // ─── Clic carte ──────────────────────────────────────
 
   onCardClick(room: Sensor) {
     if (room.sensor_id) {
@@ -106,7 +161,7 @@ export class HomeComponent implements OnDestroy {
     }
   }
 
-  // ─── Modal : ajouter une nouvelle salle ──────────────
+  // ─── Modal : ajouter une salle ───────────────────────
 
   openAddForm() {
     this.showAddForm = true;
@@ -141,13 +196,11 @@ export class HomeComponent implements OnDestroy {
         this.stopSensorPolling();
         this.loadSensors();
       },
-      error: (err) => {
-        this.addErrorMsg = err?.error?.error || "Erreur lors de l'ajout.";
-      },
+      error: (err) => { this.addErrorMsg = err?.error?.error || "Erreur lors de l'ajout."; },
     });
   }
 
-  // ─── Modal : associer un capteur à une salle ─────────
+  // ─── Modal : associer un capteur ─────────────────────
 
   openAssignModal(room: Sensor) {
     this.selectedRoom = room;
@@ -165,28 +218,16 @@ export class HomeComponent implements OnDestroy {
   }
 
   submitAssign() {
-    if (!this.assignSensorId) {
-      this.assignErrorMsg = 'Sélectionnez un capteur.';
-      return;
-    }
+    if (!this.assignSensorId) { this.assignErrorMsg = 'Sélectionnez un capteur.'; return; }
     const exists = this.availableSensors.some(s => s.sensor_id === this.assignSensorId);
-    if (!exists) {
-      this.assignErrorMsg = "Ce capteur n'est pas disponible.";
-      return;
-    }
-    this.svc.assignSensor(this.selectedRoom!.id!, this.assignSensorId)
-      .pipe(take(1))
-      .subscribe({
-        next: () => {
-          this.stopSensorPolling();
-          this.router.navigate(['/dashboard'], {
-            queryParams: { room: this.selectedRoom!.id }
-          });
-        },
-        error: (err) => {
-          this.assignErrorMsg = err?.error?.error || "Erreur lors de l'assignation.";
-        },
-      });
+    if (!exists) { this.assignErrorMsg = "Ce capteur n'est pas disponible."; return; }
+    this.svc.assignSensor(this.selectedRoom!.id!, this.assignSensorId).pipe(take(1)).subscribe({
+      next: () => {
+        this.stopSensorPolling();
+        this.router.navigate(['/dashboard'], { queryParams: { room: this.selectedRoom!.id } });
+      },
+      error: (err) => { this.assignErrorMsg = err?.error?.error || "Erreur lors de l'assignation."; },
+    });
   }
 
   // ─── Suppression ─────────────────────────────────────

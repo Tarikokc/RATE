@@ -6,6 +6,7 @@ import { CommonModule, DecimalPipe, isPlatformBrowser } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { Subscription, interval } from 'rxjs';
 import { MesureService, Mesure } from '../../services/mesure.service';
+import { ClientConfigService, ClientConfig } from '../../services/client-config.service';
 import { BaseChartDirective } from 'ng2-charts';
 import { ChartConfiguration } from 'chart.js';
 
@@ -23,19 +24,31 @@ interface Stats {
   styleUrl: './dashboard.css',
 })
 export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
-  // ← null au démarrage, plus de fake par défaut
   mesure: Mesure | null = null;
   currentTime = '';
   systemActive = false;
   loading = true;
+
+  // Config client
+  clientConfig: ClientConfig | null = null;
+  orgName = 'RATE Dashboard';
+
+  // Seuils (valeurs par défaut, écrasées par la config)
+  co2Warning  = 1000;
+  co2Critical = 1500;
+  tempMin     = 18;
+  tempMax     = 22;
+  humMin      = 30;
+  humMax      = 65;
 
   tempStats: Stats = { min: 0, moy: 0, max: 0 };
   humStats:  Stats = { min: 0, moy: 0, max: 0 };
   co2Stats:  Stats = { min: 0, moy: 0, max: 0 };
 
   private subs: Subscription[] = [];
-  private platformId = inject(PLATFORM_ID);
-  private cdr        = inject(ChangeDetectorRef);
+  private platformId  = inject(PLATFORM_ID);
+  private cdr         = inject(ChangeDetectorRef);
+  private configSvc   = inject(ClientConfigService);
 
   chartLabels: string[] = [];
   chartDatasets: ChartConfiguration<'line'>['data']['datasets'] = [
@@ -50,15 +63,28 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   ];
   chartOptions: ChartConfiguration<'line'>['options'] = {
     responsive: true,
-    scales: {
-      x: { ticks: { maxTicksLimit: 10 } },
-    },
+    scales: { x: { ticks: { maxTicksLimit: 10 } } },
   };
 
   constructor(private svc: MesureService) {}
 
   ngOnInit() {
     this.tickTime();
+    // Charge la config client en premier
+    this.configSvc.getConfig().subscribe({
+      next: (cfg) => {
+        this.clientConfig = cfg;
+        this.orgName      = cfg.organisation.name;
+        this.co2Warning   = cfg.thresholds.co2.warning;
+        this.co2Critical  = cfg.thresholds.co2.critical;
+        this.tempMin      = cfg.thresholds.temperature.min;
+        this.tempMax      = cfg.thresholds.temperature.max;
+        this.humMin       = cfg.thresholds.humidity.min;
+        this.humMax       = cfg.thresholds.humidity.max;
+        this.cdr.detectChanges();
+      },
+      error: () => { /* garde les valeurs par défaut */ }
+    });
 
     if (isPlatformBrowser(this.platformId)) {
       this.subs.push(interval(1000).subscribe(() => this.tickTime()));
@@ -76,7 +102,28 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.currentTime = new Date().toLocaleTimeString('fr-FR');
   }
 
-  // ─── Étape 1 : récupère la dernière mesure ────────────────
+  // ─── Statut alerte CO2 ────────────────────────────────────
+  get co2Status(): 'ok' | 'warning' | 'critical' {
+    if (!this.mesure) return 'ok';
+    if (this.mesure.co2 >= this.co2Critical) return 'critical';
+    if (this.mesure.co2 >= this.co2Warning)  return 'warning';
+    return 'ok';
+  }
+
+  // ─── Statut alerte température ────────────────────────────
+  get tempStatus(): 'ok' | 'warning' {
+    if (!this.mesure) return 'ok';
+    if (this.mesure.temp < this.tempMin || this.mesure.temp > this.tempMax) return 'warning';
+    return 'ok';
+  }
+
+  // ─── Statut alerte humidité ───────────────────────────────
+  get humStatus(): 'ok' | 'warning' {
+    if (!this.mesure) return 'ok';
+    if (this.mesure.hum < this.humMin || this.mesure.hum > this.humMax) return 'warning';
+    return 'ok';
+  }
+
   private refresh() {
     this.svc.getLast().subscribe({
       next: (d) => {
@@ -84,13 +131,11 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         this.systemActive = true;
         this.loading      = false;
         this.cdr.detectChanges();
-        // Étape 2 : charge l'historique filtré sur le bon capteur
         this.loadHistory();
       },
       error: () => {
         this.systemActive = false;
         this.loading      = false;
-        // Fake seulement si l'API est injoignable
         this.mesure = this.getFakeMesure();
         this.cdr.detectChanges();
         this.loadHistory();
@@ -98,9 +143,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  // ─── Étape 2 : charge et filtre l'historique ─────────────
   private loadHistory() {
-    // Résout le sensor_id (rétrocompat clé "sensor" et "sensor_id")
     const sensorId =
       this.mesure?.sensor_id ??
       (this.mesure as any)?.sensor ??
@@ -108,19 +151,12 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.svc.getAll(sensorId).subscribe({
       next: (all) => {
-        // Filtre défensif côté client si le backend n'a pas /api/measures
         const filtered = sensorId
-          ? all.filter(
-              (m) => (m.sensor_id ?? (m as any).sensor) === sensorId
-            )
+          ? all.filter((m) => (m.sensor_id ?? (m as any).sensor) === sensorId)
           : all;
-
-        const data = filtered.length ? filtered : this.getFakeHistory();
-        this.applyHistory(data);
+        this.applyHistory(filtered.length ? filtered : this.getFakeHistory());
       },
-      error: () => {
-        this.applyHistory(this.getFakeHistory());
-      },
+      error: () => this.applyHistory(this.getFakeHistory()),
     });
   }
 
@@ -135,7 +171,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
-  // ─── Données fictives (fallback erreur réseau uniquement) ─
   private getFakeMesure(): Mesure {
     return {
       temp: 20.4, hum: 52.1, co2: 620, motion: false,

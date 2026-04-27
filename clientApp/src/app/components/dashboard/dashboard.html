@@ -1,6 +1,6 @@
 <div class="page">
   <header class="topbar">
-    <h1 class="brand">RATE Dashboard</h1>
+    <h1 class="brand">{{ orgName }}</h1>
     <a routerLink="/" class="back">← Retour à l'accueil</a>
 
     <div class="topbar-right">
@@ -9,95 +9,84 @@
       </div>
       <a class="btn" routerLink="/control-panel">⊞ Control Panel</a>
     </div>
-
-    
   </header>
 
-  
   <div class="weather-mini" *ngIf="mesure as m">
     {{ m.outdoor_temp | number:'1.0-1' }} °C ·
     {{ m.outdoor_hum  | number:'1.0-0' }} %
   </div>
 
-  <section class="grid" *ngIf="mesure as m; else loading">
-    <article class="card">
+  <section class="grid" *ngIf="mesure as m; else loadingTpl">
+
+    <!-- Température -->
+    <article class="card" [class.card-warn]="tempStatus === 'warning'">
       <div class="card-head">
         <span class="k">TEMPÉRATURE</span><span>🌡️</span>
       </div>
       <div class="bar bar-temp"></div>
       <div class="val">{{ m.temp | number:'1.2-2' }}</div>
       <div class="unit">°C</div>
+      @if (tempStatus === 'warning') {
+        <div class="alert-badge warn">⚠️ Hors plage ({{ tempMin }}–{{ tempMax }}°C)</div>
+      }
       <div class="line"></div>
       <div class="stats">
-        <div class="st">
-          <span class="sl">MIN</span>
-          <span class="sv">{{ tempStats.min | number:'1.2-2' }}</span>
-        </div>
-        <div class="st">
-          <span class="sl">MOY</span>
-          <span class="sv">{{ tempStats.moy | number:'1.2-2' }}</span>
-        </div>
-        <div class="st">
-          <span class="sl">MAX</span>
-          <span class="sv">{{ tempStats.max | number:'1.2-2' }}</span>
-        </div>
+        <div class="st"><span class="sl">MIN</span><span class="sv">{{ tempStats.min | number:'1.2-2' }}</span></div>
+        <div class="st"><span class="sl">MOY</span><span class="sv">{{ tempStats.moy | number:'1.2-2' }}</span></div>
+        <div class="st"><span class="sl">MAX</span><span class="sv">{{ tempStats.max | number:'1.2-2' }}</span></div>
       </div>
       <div class="line"></div>
       <div class="ts">{{ fmt(m.timestamp) }}</div>
     </article>
 
-    <article class="card">
+    <!-- Humidité -->
+    <article class="card" [class.card-warn]="humStatus === 'warning'">
       <div class="card-head">
         <span class="k">HUMIDITÉ</span><span>💧</span>
       </div>
       <div class="bar bar-hum"></div>
       <div class="val">{{ m.hum | number:'1.2-2' }}</div>
       <div class="unit">%</div>
+      @if (humStatus === 'warning') {
+        <div class="alert-badge warn">⚠️ Hors plage ({{ humMin }}–{{ humMax }}%)</div>
+      }
       <div class="line"></div>
       <div class="stats">
-        <div class="st">
-          <span class="sl">MIN</span>
-          <span class="sv">{{ humStats.min | number:'1.2-2' }}</span>
-        </div>
-        <div class="st">
-          <span class="sl">MOY</span>
-          <span class="sv">{{ humStats.moy | number:'1.2-2' }}</span>
-        </div>
-        <div class="st">
-          <span class="sl">MAX</span>
-          <span class="sv">{{ humStats.max | number:'1.2-2' }}</span>
-        </div>
+        <div class="st"><span class="sl">MIN</span><span class="sv">{{ humStats.min | number:'1.2-2' }}</span></div>
+        <div class="st"><span class="sl">MOY</span><span class="sv">{{ humStats.moy | number:'1.2-2' }}</span></div>
+        <div class="st"><span class="sl">MAX</span><span class="sv">{{ humStats.max | number:'1.2-2' }}</span></div>
       </div>
       <div class="line"></div>
       <div class="ts">{{ fmt(m.timestamp) }}</div>
     </article>
 
-    <article class="card">
+    <!-- CO2 -->
+    <article class="card"
+      [class.card-warn]="co2Status === 'warning'"
+      [class.card-critical]="co2Status === 'critical'">
       <div class="card-head">
         <span class="k">CO2</span><span>🧭</span>
       </div>
       <div class="bar bar-pres"></div>
       <div class="val">{{ m.co2 | number:'1.0-0' }}</div>
       <div class="unit">ppm</div>
+      @if (co2Status === 'warning') {
+        <div class="alert-badge warn">⚠️ Élevé (seuil : {{ co2Warning }} ppm)</div>
+      }
+      @if (co2Status === 'critical') {
+        <div class="alert-badge critical">🚨 Critique (seuil : {{ co2Critical }} ppm)</div>
+      }
       <div class="line"></div>
       <div class="stats">
-        <div class="st">
-          <span class="sl">MIN</span>
-          <span class="sv">{{ co2Stats.min | number:'1.0-0' }}</span>
-        </div>
-        <div class="st">
-          <span class="sl">MOY</span>
-          <span class="sv">{{ co2Stats.moy | number:'1.0-0' }}</span>
-        </div>
-        <div class="st">
-          <span class="sl">MAX</span>
-          <span class="sv">{{ co2Stats.max | number:'1.0-0' }}</span>
-        </div>
+        <div class="st"><span class="sl">MIN</span><span class="sv">{{ co2Stats.min | number:'1.0-0' }}</span></div>
+        <div class="st"><span class="sl">MOY</span><span class="sv">{{ co2Stats.moy | number:'1.0-0' }}</span></div>
+        <div class="st"><span class="sl">MAX</span><span class="sv">{{ co2Stats.max | number:'1.0-0' }}</span></div>
       </div>
       <div class="line"></div>
       <div class="ts">{{ fmt(m.timestamp) }}</div>
     </article>
 
+    <!-- Mouvement -->
     <article class="card motion" [class.on]="m.motion">
       <div class="card-head">
         <span class="k">MOUVEMENT</span><span>👁️</span>
@@ -108,23 +97,31 @@
       </div>
       <div class="ts">{{ fmt(m.timestamp) }}</div>
     </article>
+
   </section>
-  
+
+  <!-- Seuils de référence -->
+  @if (clientConfig) {
+    <div class="thresholds-bar">
+      <span>Seuils : CO2 ⚠️ {{ co2Warning }} ppm / 🚨 {{ co2Critical }} ppm</span>
+      <span>Temp : {{ tempMin }}–{{ tempMax }}°C</span>
+      <span>Hum : {{ humMin }}–{{ humMax }}%</span>
+    </div>
+  }
+
   <section class="chart-section">
     <h2>Historique température</h2>
     <canvas baseChart
       [data]="{ labels: chartLabels, datasets: chartDatasets }"
       [options]="chartOptions"
-      
       type="line">
     </canvas>
   </section>
-  
-  <ng-template #loading>
+
+  <ng-template #loadingTpl>
     <div class="loading">
       <div class="spinner"></div>
       <p>Connexion au capteur…</p>
     </div>
   </ng-template>
-</div> 
-
+</div>
