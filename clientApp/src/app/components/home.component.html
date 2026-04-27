@@ -20,32 +20,18 @@
     <section class="sensors-section">
       <div class="section-header">
         <h2>Salles configurées</h2>
-        <div class="section-actions">
-          @if (roomTemplates.length > 0 && sensors.length === 0) {
-            <button class="btn-import" (click)="openImportModal()">📂 Importer depuis la config</button>
-          }
-          <button class="btn-primary" (click)="openAddForm()">+ Ajouter une salle</button>
-        </div>
       </div>
 
       @if (success) {
         <div class="success-msg">✅ {{ success }}</div>
-      }
-      @if (importSuccess) {
-        <div class="success-msg">✅ {{ importSuccess }}</div>
       }
 
       @if (sensors.length === 0) {
         <div class="empty-state">
           <div class="empty-icon">🏠</div>
           <h2>Aucune salle configurée</h2>
-          <p>Ajoutez votre première salle ou importez les salles prédéfinies.</p>
-          <div class="empty-actions">
-            @if (roomTemplates.length > 0) {
-              <button class="btn-import" (click)="openImportModal()">📂 Importer {{ roomTemplates.length }} salles depuis la config</button>
-            }
-            <button class="btn-primary" (click)="openAddForm()">+ Ajouter manuellement</button>
-          </div>
+          <p>Vérifiez que le serveur est bien démarré et rechargez la page.</p>
+          <button class="btn-primary" (click)="loadSensors()">Recharger</button>
         </div>
       } @else {
         <div class="sensors-grid">
@@ -82,71 +68,12 @@
   }
 </div>
 
-<!-- ─── Modal : Import depuis config ──────────────────── -->
-@if (showImportModal) {
-  <div class="modal-overlay" (click)="closeImportModal()">
-    <div class="modal" (click)="$event.stopPropagation()">
-      <h3>📂 Importer les salles prédéfinies</h3>
-      <p class="modal-subtitle">{{ roomTemplates.length }} salles seront créées depuis <code>client.config.json</code>. Vous pourrez ensuite y associer un capteur.</p>
-      <div class="import-preview">
-        @for (t of roomTemplates; track t.name) {
-          <div class="import-item">
-            <span class="import-name">{{ t.name }}</span>
-            <span class="import-floor">Étage {{ t.floor }}</span>
-            <span class="import-desc">{{ t.description }}</span>
-          </div>
-        }
-      </div>
-      <div class="modal-actions">
-        <button class="btn-cancel" (click)="closeImportModal()">Annuler</button>
-        <button class="btn-primary" [disabled]="importLoading" (click)="importAllRooms()">
-          {{ importLoading ? 'Import en cours...' : 'Importer toutes les salles' }}
-        </button>
-      </div>
-    </div>
-  </div>
-}
-
-<!-- ─── Modal : Ajouter une salle ────────────────────── -->
-@if (showAddForm) {
-  <div class="modal-overlay" (click)="closeAddForm()">
-    <div class="modal" (click)="$event.stopPropagation()">
-      <h3>Ajouter une salle</h3>
-      @if (addErrorMsg) { <div class="error-msg">⚠️ {{ addErrorMsg }}</div> }
-      <label>Nom de la salle *
-        <input [(ngModel)]="addForm.name" placeholder="ex: Salle A101" />
-      </label>
-      <label>Étage *
-        <input [(ngModel)]="addForm.floor" placeholder="ex: 1" />
-      </label>
-      <label>Description
-        <input [(ngModel)]="addForm.description" placeholder="ex: Salle principale" />
-      </label>
-      <label>Capteur ESP détecté *
-        <select [(ngModel)]="addForm.sensor_id">
-          <option value="">-- Sélectionner un capteur --</option>
-          @for (s of availableSensors; track s.sensor_id) {
-            <option [value]="s.sensor_id">{{ s.sensor_id }}</option>
-          }
-        </select>
-      </label>
-      @if (availableSensors.length === 0) {
-        <div class="hint-msg">💡 Aucun capteur détecté. Allumez votre ESP8266.</div>
-      }
-      <div class="modal-actions">
-        @if (sensors.length > 0) { <button class="btn-cancel" (click)="closeAddForm()">Annuler</button> }
-        <button class="btn-primary" [disabled]="availableSensors.length === 0" (click)="submitAdd()">Ajouter</button>
-      </div>
-    </div>
-  </div>
-}
-
 <!-- ─── Modal : Associer un capteur ──────────────────── -->
 @if (showAssignModal && selectedRoom) {
   <div class="modal-overlay" (click)="closeAssignModal()">
     <div class="modal" (click)="$event.stopPropagation()">
       <h3>Associer un capteur à <span class="teal">{{ selectedRoom.name }}</span></h3>
-      <p class="modal-subtitle">Allumez votre ESP8266, attendez qu'il soit détecté, puis sélectionnez-le.</p>
+      <p class="modal-subtitle">Allumez votre ESP8266, attendez qu’il soit détecté, puis sélectionnez-le.</p>
       @if (assignErrorMsg) { <div class="error-msg">⚠️ {{ assignErrorMsg }}</div> }
       <label>Capteur ESP détecté
         <select [(ngModel)]="assignSensorId">
