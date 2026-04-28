@@ -12,6 +12,7 @@ from app.routes.sensors import bp as sensors_bp
 from app.routes.reservations import bp as reservations_bp
 from app.routes.heating import bp as heating_bp
 from app.routes.predict import bp as predict_bp
+from app.routes.config import bp as config_bp
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -25,6 +26,7 @@ app.register_blueprint(sensors_bp)
 app.register_blueprint(reservations_bp)
 app.register_blueprint(heating_bp)
 app.register_blueprint(predict_bp)
+app.register_blueprint(config_bp)
 
 with app.app_context():
     init_db()

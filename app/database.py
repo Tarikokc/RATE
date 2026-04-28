@@ -1,8 +1,13 @@
 import sqlite3
+import os
+import json
 from flask import g
 from app.config import Config
 
 DB_PATH = Config.DB_PATH
+
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'client.config.json')
+
 
 def get_db():
     if "db" not in g:
@@ -12,10 +17,12 @@ def get_db():
         g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
+
 def close_db(e=None):
     db = g.pop("db", None)
     if db is not None:
         db.close()
+
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -65,5 +72,27 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_measures_sensor  ON measures(sensor_id);
         CREATE INDEX IF NOT EXISTS idx_measures_room_ts ON measures(room_id, timestamp);
     """)
+
+    # Seed rooms from client.config.json if the table is empty
+    count = conn.execute("SELECT COUNT(*) FROM rooms").fetchone()[0]
+    if count == 0:
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            rooms = config.get('rooms', [])
+            for r in rooms:
+                conn.execute(
+                    "INSERT INTO rooms (name, capacity, floor, description, sensor_id) VALUES (?,?,?,?,NULL)",
+                    (
+                        r.get('name', 'Salle'),
+                        r.get('capacity', 10),
+                        r.get('floor', 'RDC'),
+                        r.get('description', ''),
+                    )
+                )
+            conn.commit()
+            print(f"[DB] {len(rooms)} salles importées depuis client.config.json")
+        except Exception as e:
+            print(f"[DB] Seed rooms skipped: {e}")
 
     conn.close()

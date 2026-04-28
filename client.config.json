@@ -1,0 +1,35 @@
+{
+  "organisation": {
+    "name": "Lycée Jean Moulin",
+    "type": "school",
+    "logo": "",
+    "address": "12 rue de la République, 75001 Paris",
+    "contact": "admin@lycee-jeanmoulin.fr"
+  },
+  "thresholds": {
+    "co2": {
+      "warning": 1000,
+      "critical": 1500
+    },
+    "temperature": {
+      "min": 18,
+      "max": 22
+    },
+    "humidity": {
+      "min": 30,
+      "max": 65
+    }
+  },
+  "rooms": [
+    { "name": "Salle 101",  "floor": "1", "description": "Salle de classe",    "capacity": 30 },
+    { "name": "Salle 102",  "floor": "1", "description": "Salle de classe",    "capacity": 30 },
+    { "name": "Salle 103",  "floor": "1", "description": "Salle de classe",    "capacity": 30 },
+    { "name": "Salle 201",  "floor": "2", "description": "Salle de classe",    "capacity": 30 },
+    { "name": "Salle 202",  "floor": "2", "description": "Salle de classe",    "capacity": 30 },
+    { "name": "Salle 203",  "floor": "2", "description": "Salle de classe",    "capacity": 30 },
+    { "name": "CDI",        "floor": "1", "description": "Centre de documentation", "capacity": 40 },
+    { "name": "Gymnase",    "floor": "0", "description": "Salle de sport",     "capacity": 200 },
+    { "name": "Cantine",    "floor": "0", "description": "Réfectoire",         "capacity": 150 },
+    { "name": "Salle des profs", "floor": "1", "description": "Salle professeurs", "capacity": 20 }
+  ]
+}
