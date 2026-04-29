@@ -35,6 +35,20 @@ echo "[4/9] Installation des dependances Python..."
 pip install --upgrade pip --quiet
 pip install -r /home/customer/Documents/RATE/requirements.txt --quiet
 
+# --- 4.1.5. Installation de Node.js et npm ---
+echo "[5/9] Installation de Node.js..."
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+node -v
+npm -v
+
+# --- 4.5. Build du front Angular ---
+echo "[5/9] Build du front Angular..."
+cd "$PROJECT/clientApp"
+npm install --silent
+npx ng build --configuration=production
+cd "$PROJECT"
+
 # --- 5. Creer les dossiers necessaires ---
 echo "[5/9] Creation des dossiers..."
 mkdir -p "$PROJECT/data"
@@ -46,7 +60,7 @@ if [ ! -f "$PROJECT/.env" ]; then
   cp "$PROJECT/.env.example" "$PROJECT/.env"
   PI_IP=$(hostname -I | awk '{print $1}')
   sed -i "s|API_URL=.*|API_URL=http://$PI_IP:80|" "$PROJECT/.env"
-  sed -i "s|DB_PATH=.*|DB_PATH=/home/pi/RATE/data/rate.db|" "$PROJECT/.env"
+  sed -i "s|DB_PATH=.*|DB_PATH=/home/customer/Documents/RATE/data/rate.db|" "$PROJECT/.env"
   sed -i "s|FLASK_ENV=.*|FLASK_ENV=prod|" "$PROJECT/.env"
   echo "  .env cree automatiquement avec IP=$PI_IP"
   echo "  Verifie /home/pi/RATE/.env si besoin."
