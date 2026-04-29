@@ -3,11 +3,10 @@
 #include <Wire.h>
 #include <SensirionI2cScd4x.h>
 
-const char* ssid      = "iPhone de Tarik";
-const char* password  = "TarikArt942003";
-const char* serverUrl = "http://172.20.10.7:5000/api/measures";
-// const char* serverUrl = "http://172.20.10.2/api/measures";
-
+const char* ssid         = "iPhone de Tarik";
+const char* password     = "TarikArt942003";
+const char* serverUrl    = "http://172.20.10.7:5000/api/measures";
+const char* heatingUrl   = "http://172.20.10.7:5000/api/heating/sensor-state";
 
 #define BME_SDA D6
 #define BME_SCL D5
@@ -16,6 +15,7 @@ const int PIR_PIN = D2;
 SensirionI2cScd4x scd4x;
 String sensorId;
 bool sensorOk = false;
+float fakeTemp = 16.0;  
 
 bool connectWifi() {
   WiFi.persistent(false);
@@ -52,7 +52,7 @@ void setup() {
   delay(500);
   uint16_t err = scd4x.startPeriodicMeasurement();
   if (err) {
-    Serial.println("SCD40 non détecté (err=" + String(err) + ") → mode données fictives");
+    Serial.println("SCD40 non détecté → mode données fictives");
     sensorOk = false;
   } else {
     Serial.println("SCD40 démarré");
@@ -68,16 +68,14 @@ void loop() {
   if (sensorOk) {
     uint16_t err = scd4x.readMeasurement(co2, temp, hum);
     if (err) {
-      Serial.println("Erreur lecture SCD40 : " + String(err) + " → données fictives");
+      Serial.println("Erreur lecture SCD40 → données fictives");
       sensorOk = false;
     }
   }
 
-  // Données fictives si capteur absent
   if (!sensorOk) {
     co2  = 400 + random(-20, 20);
-    // temp = 20.0 + random(-10, 10) / 10.0;
-    temp = 26.0;
+    temp = fakeTemp;                        
     hum  = 50.0 + random(-50, 50) / 10.0;
   }
 
@@ -92,6 +90,7 @@ void loop() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
+    // ── POST mesure ──────────────────────────────────────
     String payload = "{";
     payload += "\"sensor_id\":\"" + sensorId + "\",";
     payload += "\"co2\":"    + String(co2)     + ",";
@@ -107,6 +106,26 @@ void loop() {
       int code = http.POST(payload);
       Serial.println("POST -> " + String(code));
       http.end();
+    }
+
+    // ── GET état relais (uniquement en mode fake) ─────────
+    if (!sensorOk) {
+      String url = String(heatingUrl) + "?sensor_id=" + sensorId;
+      if (http.begin(client, url)) {
+        int code = http.GET();
+        if (code == 200) {
+          String body = http.getString();
+          if (body.indexOf("true") != -1) {
+            fakeTemp += 0.12;  // 🔥 chauffage ON → monte ~+1.4°C/min
+            Serial.println("Relais ON  → fakeTemp=" + String(fakeTemp, 1) + "°C");
+          } else {
+            fakeTemp -= 0.04;  // ❄️ chauffage OFF → descend ~-0.5°C/min
+            Serial.println("Relais OFF → fakeTemp=" + String(fakeTemp, 1) + "°C");
+          }
+          fakeTemp = constrain(fakeTemp, 13.0, 35.0);
+        }
+        http.end();
+      }
     }
   }
 
