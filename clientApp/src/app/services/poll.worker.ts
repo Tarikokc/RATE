@@ -9,6 +9,7 @@ addEventListener('message', ({ data }) => {
       postMessage({ type: 'tick' });
     }, data.ms ?? 30_000);
     postMessage({ type: 'tick' });
+  }
   if (data.type === 'stop') {
     if (interval) clearInterval(interval);
   }

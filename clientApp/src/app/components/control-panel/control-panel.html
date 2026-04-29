@@ -141,11 +141,7 @@
   </div>
 
   <div class="cal-wrap">
-    @if (resLoading) {
-    <div class="cal-loading">
-      <div class="spinner"></div>
-    </div>
-    }
+
     <div class="calendar">
       <div class="cal-head-empty"></div>
       @for (day of weekDays; track day.getTime()) {
