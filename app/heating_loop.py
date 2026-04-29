@@ -3,7 +3,7 @@ import sqlite3
 import json
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.config import Config
 from app.heating_controller import heating_decision
@@ -26,7 +26,7 @@ ROOM_PINS: dict[int, int] = {
     3: 22,
 }
 
-# État partagé avec simulate_sensor.py via fichier JSON
+# État partagé en mémoire + fichier JSON
 _relay_state: dict[int, bool] = {}
 RELAY_STATE_FILE = "data/relay_state.json"
 
@@ -39,7 +39,7 @@ def _save_relay_state() -> None:
 
 def _set_relay(room_id: int, on: bool) -> None:
     if _relay_state.get(room_id) == on:
-        return  # Pas de changement → on évite un GPIO inutile
+        return
     pin = ROOM_PINS.get(room_id)
     if pin is not None:
         GPIO.setup(pin, GPIO.OUT)
@@ -55,10 +55,22 @@ def _get_conn() -> sqlite3.Connection:
     return conn
 
 
+def _utc_str(dt: datetime) -> str:
+    """
+    Retourne un datetime UTC sous la forme acceptée par SQLite pour
+    comparer avec les valeurs stockées ('2026-04-29T21:00:00.000Z').
+    On utilise le format ISO sans 'Z' car SQLite compare en string.
+    Exemple : '2026-04-29T20:45:00'
+    """
+    return dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+
 def run_once() -> None:
-    """Évalue et applique les décisions de chauffage pour toutes les salles."""
-    now  = datetime.now().isoformat()
-    soon = (datetime.now() + timedelta(hours=2)).isoformat()
+    """Evalue et applique les décisions de chauffage pour toutes les salles."""
+    # Toutes les comparaisons en UTC pour correspondre aux datetimes en DB
+    now_utc  = datetime.now(timezone.utc)
+    now_str  = _utc_str(now_utc)
+    soon_str = _utc_str(now_utc + timedelta(hours=2))
 
     conn = _get_conn()
     try:
@@ -78,17 +90,23 @@ def run_once() -> None:
                 temp = m["temp"] if m else None
 
             # Réservation en cours
+            # Les datetimes DB sont UTC (ex: '2026-04-29T21:00:00.000Z')
+            # On retire le 'Z' pour la comparaison string avec now_str
             current = conn.execute("""
                 SELECT * FROM reservations
-                WHERE room_id=? AND start_datetime<=? AND end_datetime>=?
-            """, (rid, now, now)).fetchone()
+                WHERE room_id=?
+                  AND replace(start_datetime,'Z','') <= ?
+                  AND replace(end_datetime,  'Z','') >= ?
+            """, (rid, now_str, now_str)).fetchone()
 
             # Prochaine réservation (dans les 2h)
             upcoming = conn.execute("""
                 SELECT * FROM reservations
-                WHERE room_id=? AND start_datetime>? AND start_datetime<=?
+                WHERE room_id=?
+                  AND replace(start_datetime,'Z','') > ?
+                  AND replace(start_datetime,'Z','') <= ?
                 ORDER BY start_datetime LIMIT 1
-            """, (rid, now, soon)).fetchone()
+            """, (rid, now_str, soon_str)).fetchone()
 
             decision = heating_decision(
                 temp,
@@ -115,7 +133,7 @@ def get_relay_state() -> dict[int, bool]:
 
 
 def start_scheduler() -> None:
-    """À appeler depuis server.py après la création de l'app Flask."""
+    """A appeler depuis server.py après la création de l'app Flask."""
     from apscheduler.schedulers.background import BackgroundScheduler
 
     scheduler = BackgroundScheduler(timezone="Europe/Paris")
