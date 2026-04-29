@@ -28,6 +28,7 @@ app.register_blueprint(heating_bp)
 app.register_blueprint(predict_bp)
 app.register_blueprint(config_bp)
 
+
 with app.app_context():
     init_db()
 
