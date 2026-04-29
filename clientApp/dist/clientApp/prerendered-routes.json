@@ -1,7 +1,3 @@
 {
-  "routes": {
-    "/": {},
-    "/control-panel": {},
-    "/dashboard": {}
-  }
+  "routes": {}
 }

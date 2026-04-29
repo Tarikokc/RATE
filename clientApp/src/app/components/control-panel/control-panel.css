@@ -523,6 +523,51 @@ h3 { margin: 0 0 1.2rem; font-size: clamp(0.95rem, 3vw, 1.05rem); font-weight: 9
 }
 .btn-ok:hover { opacity: .88; }
 
+/* ── Historique ── */
+.hist {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 0.8fr 1fr 1fr 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  padding: .65rem .75rem;
+  font-size: clamp(0.78rem, 2vw, 0.88rem);
+}
+
+.hist.head {
+  font-size: .7rem;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border-bottom: 2px solid rgba(255,255,255,.12);
+  padding-bottom: .65rem;
+}
+
+.hist.row {
+  border-top: 1px solid rgba(255,255,255,.05);
+  font-weight: 700;
+  color: rgba(230,237,243,.85);
+}
+
+.hist.row:hover {
+  background: rgba(255,255,255,.03);
+}
+
+/* Scroll horizontal sur mobile */
+.hist-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  min-width: 0;
+}
+
+.hist-wrap .hist {
+  min-width: 520px;
+}
+
+/* ── Badge état historique ── */
+.badge.ok     { background: rgba(16,185,129,.15);  border-color: rgba(16,185,129,.35);  color: #10b981; }
+.badge.warn   { background: rgba(245,158,11,.15);  border-color: rgba(245,158,11,.35);  color: #f59e0b; }
+.badge.danger { background: rgba(239,68,68,.15);   border-color: rgba(239,68,68,.35);   color: #ef4444; }
 /* ── Responsive global ── */
 @media (max-width: 480px) {
   .topbar { flex-direction: column; }
@@ -531,3 +576,4 @@ h3 { margin: 0 0 1.2rem; font-size: clamp(0.95rem, 3vw, 1.05rem); font-weight: 9
   .grid { grid-template-columns: 1fr; }
   .rooms-grid { grid-template-columns: 1fr; }
 }
+

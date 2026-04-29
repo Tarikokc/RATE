@@ -32,7 +32,7 @@ with app.app_context():
     init_db()
 
 DIST = os.path.join(os.path.dirname(__file__), "clientApp", "dist", "client-app", "browser")
-
+DIST = os.path.join(os.path.dirname(__file__), "clientApp", "dist", "clientApp", "browser")
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_angular(path):

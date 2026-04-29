@@ -90,7 +90,7 @@
   <!-- ═══ HISTORIQUE ═══ -->
   } @else if (activeTab === 'historique') {
 
-  <section class="card">
+  <!-- <section class="card">
     <div class="row" style="padding-top: 0;">
       <div>
         <span class="k">Historique récent</span>
@@ -125,6 +125,46 @@
       </span>
     </div>
     }
+    }
+  </section> -->
+
+  <section class="card">
+    <div class="row" style="padding-top: 0;">
+      <div>
+        <span class="k">Historique récent</span>
+        <p class="desc">20 dernières mesures enregistrées.</p>
+      </div>
+      <button class="pill" (click)="loadHistory()">↺ Actualiser</button>
+    </div>
+
+    @if (historyLoading) {
+    <div class="placeholder">Chargement…</div>
+    } @else if (!history.length) {
+    <div class="placeholder">Aucun historique disponible.</div>
+    } @else {
+    <div class="hist-wrap">
+      <div class="hist head">
+        <span>Heure</span>
+        <span>Temp</span>
+        <span>Humidité</span>
+        <span>CO2</span>
+        <span>Mouvement</span>
+        <span>État</span>
+      </div>
+
+      @for (m of history; track m.timestamp) {
+      <div class="row hist">
+        <span>{{ fmt(m.timestamp) }}</span>
+        <span>{{ m.temp | number:'1.1-1' }} °C</span>
+        <span>{{ m.hum | number:'1.0-0' }} %</span>
+        <span>{{ m.co2 | number:'1.0-0' }} ppm</span>
+        <span>{{ m.motion ? '● Oui' : '– Non' }}</span>
+        <span class="badge" [ngClass]="severityClass(m)">
+          {{ severityLabel(m) }}
+        </span>
+      </div>
+      }
+    </div>
     }
   </section>
 
