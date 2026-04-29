@@ -21,4 +21,19 @@ def heating_decision_api():
             )
         }
         for room in rooms
-    ])    
+    ])
+
+
+@bp.route("/api/heating/state")
+def heating_relay_state():
+    """État actuel des relais (utile pour debug et dashboard)."""
+    from app.heating_loop import get_relay_state
+    return jsonify({str(k): v for k, v in get_relay_state().items()})
+
+
+@bp.route("/api/heating/trigger", methods=["POST"])
+def heating_trigger():
+    """Force un run immédiat du heating loop (utile pour les tests)."""
+    from app.heating_loop import run_once
+    run_once()
+    return jsonify({"ok": True, "message": "Heating loop exécuté"})
