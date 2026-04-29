@@ -1,15 +1,15 @@
-import { afterNextRender, Component, OnInit, OnDestroy, PLATFORM_ID, inject} from '@angular/core';
+import { afterNextRender, Component, OnDestroy, PLATFORM_ID, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { Subject, Subscription } from 'rxjs';
-import { takeUntil, take, finalize } from 'rxjs/operators'; 
+import { takeUntil, take, finalize } from 'rxjs/operators';
 import { MesureService, Mesure } from '../../services/mesure.service';
 import { ReservationService, Room, Reservation } from '../../services/reservation.service';
 import { buildAlerts, AlertItem } from '../../services/control-alerts';
 import { buildHistory, getSeverity, getSeverityLabel } from '../../services/control-history';
 import { HeatingService, HeatingDecision } from '../../services/heating-service';
-import { isPlatformBrowser } from '@angular/common';
+import { NotificationService } from '../../services/notification.service';
 
 type Tab = 'systeme' | 'alertes' | 'automation' | 'historique' | 'reservations';
 
@@ -18,7 +18,7 @@ type Tab = 'systeme' | 'alertes' | 'automation' | 'historique' | 'reservations';
   standalone: true,
   imports: [CommonModule, FormsModule, RouterModule],
   templateUrl: './control-panel.html',
-  styleUrl: './control-panel.css'
+  styleUrl: './control-panel.css',
 })
 export class ControlPanelComponent implements OnDestroy {
 
@@ -33,11 +33,15 @@ export class ControlPanelComponent implements OnDestroy {
   ];
 
   // ── Système ──────────────────────────────────────
-  mode: 'auto' | 'manuel' = 'auto';
-  recording = true; autoArchive = false;
-  desktopNotifs = false; soundAlerts = false;
   systemActive = false;
   lastMesure: Mesure | null = null;
+
+  // ── Toggles persistés ─────────────────────────────
+  get desktopNotifs() { return this.notifSvc.desktopNotifs; }
+  set desktopNotifs(val: boolean) { this.notifSvc.desktopNotifs = val; }
+
+  get soundAlerts() { return localStorage.getItem('rate_sounds') === 'true'; }
+  set soundAlerts(val: boolean) { localStorage.setItem('rate_sounds', String(val)); }
 
   // ── Réservations ─────────────────────────────────
   rooms: Room[] = [];
@@ -67,9 +71,10 @@ export class ControlPanelComponent implements OnDestroy {
   constructor(
     private svc: MesureService,
     private resSvc: ReservationService,
-    private heatingSvc: HeatingService
+    private heatingSvc: HeatingService,
+    public notifSvc: NotificationService,
   ) {
-    afterNextRender(() => {          // ← remplace ngOnInit
+    afterNextRender(() => {
       this.loadLastMesure();
       this.loadHistory();
       this.loadHeating();
@@ -91,19 +96,28 @@ export class ControlPanelComponent implements OnDestroy {
     this.destroy$.complete();
   }
 
-  // ── Chauffage ─────────────────────────────────────
-  loadHeating() {
-  this.heatingSvc.getDecisions().pipe(take(1)).subscribe({
-    next:  (d: HeatingDecision[]) => this.decisions = d,
-    error: (e: unknown)           => console.error('[HEATING]', e)
-  });
-}
-
   // ── Système helpers ───────────────────────────────
-  fmt(ts?: string) { return ts ? new Date(ts).toLocaleTimeString('fr-FR') : '--:--:--'; }
+  fmt(ts?: string) {
+    return ts ? new Date(ts).toLocaleTimeString('fr-FR') : '--:--:--';
+  }
+
+  loadLastMesure() {
+    this.svc.getLast().pipe(take(1)).subscribe({
+      next: m => {
+        this.lastMesure = m;
+        this.systemActive = true;
+        this.alerts = buildAlerts(m);
+      },
+      error: () => {
+        this.systemActive = false;
+        this.lastMesure = null;
+        this.alerts = [];
+      },
+    });
+  }
 
   exportCSV() {
-    this.svc.getAll().pipe(take(1)).subscribe(all => { 
+    this.svc.getAll().pipe(take(1)).subscribe(all => {
       const csv = ['timestamp,temp,hum,co2,motion',
         ...all.map(m => `${m.timestamp},${m.temp},${m.hum},${m.co2},${m.motion}`)
       ].join('\n');
@@ -113,19 +127,32 @@ export class ControlPanelComponent implements OnDestroy {
 
   exportJSON() {
     this.svc.getAll().pipe(take(1)).subscribe(all => {
-      this.download(new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' }), 'rate-measures.json');
+      this.download(
+        new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' }),
+        'rate-measures.json'
+      );
     });
   }
 
   private download(blob: Blob, name: string) {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+  }
+
+  // ── Chauffage ─────────────────────────────────────
+  loadHeating() {
+    this.heatingSvc.getDecisions().pipe(take(1)).subscribe({
+      next: (d: HeatingDecision[]) => this.decisions = d,
+      error: (e: unknown) => console.error('[HEATING]', e),
+    });
   }
 
   // ── Réservations helpers ──────────────────────────
   getMonday(d: Date): Date {
     const date = new Date(d);
-    const day  = date.getDay();
+    const day = date.getDay();
     date.setDate(date.getDate() - day + (day === 0 ? -6 : 1));
     date.setHours(0, 0, 0, 0);
     return date;
@@ -149,8 +176,8 @@ export class ControlPanelComponent implements OnDestroy {
     this.resSub = this.resSvc.getReservations(undefined, this.selectedRoomId)
       .pipe(take(1), finalize(() => this.resLoading = false))
       .subscribe({
-        next:  r  => { this.reservations = r; },
-        error: () => { this.reservations = []; }
+        next: r => { this.reservations = r; },
+        error: () => { this.reservations = []; },
       });
   }
 
@@ -171,7 +198,7 @@ export class ControlPanelComponent implements OnDestroy {
 
   isOccupied(day: Date, h: number): boolean {
     return this.reservations.some(r => {
-      const s  = new Date(r.start_datetime), e = new Date(r.end_datetime);
+      const s = new Date(r.start_datetime), e = new Date(r.end_datetime);
       const sS = new Date(day); sS.setHours(h, 0, 0, 0);
       const sE = new Date(day); sE.setHours(h + 1, 0, 0, 0);
       return this.sameDay(s, day) && s < sE && e > sS;
@@ -214,10 +241,10 @@ export class ControlPanelComponent implements OnDestroy {
       title:          this.form.title,
       start_datetime: start.toISOString(),
       end_datetime:   end.toISOString(),
-      people_count:   this.form.people_count
+      people_count:   this.form.people_count,
     }).pipe(take(1)).subscribe({
-      next:  () =>  { this.showModal = false; this.loadRes(); },
-      error: (e) => { this.errorMsg = e.error?.error ?? 'Erreur serveur'; }
+      next:  () => { this.showModal = false; this.loadRes(); },
+      error: e  => { this.errorMsg = e.error?.error ?? 'Erreur serveur'; },
     });
   }
 
@@ -227,29 +254,14 @@ export class ControlPanelComponent implements OnDestroy {
       this.resSvc.deleteReservation(id).pipe(take(1)).subscribe(() => this.loadRes());
   }
 
-  loadLastMesure() {
-    this.svc.getLast().pipe(take(1)).subscribe({
-      next: m => {
-        this.lastMesure = m;
-        this.systemActive = true;
-        this.alerts = buildAlerts(m);
-      },
-      error: () => {
-        this.systemActive = false;
-        this.lastMesure = null;
-        this.alerts = [];
-      }
-    });
-  }
-
   loadHistory() {
     this.historyLoading = true;
     this.svc.getAll().pipe(take(1), finalize(() => this.historyLoading = false)).subscribe({
       next:  all => { this.history = buildHistory(all, 20); },
-      error: ()  => { this.history = []; }
+      error: ()  => { this.history = []; },
     });
   }
 
-  severityClass(m: Mesure)  { return getSeverity(m); }
-  severityLabel(m: Mesure)  { return getSeverityLabel(getSeverity(m)); }
+  severityClass(m: Mesure) { return getSeverity(m); }
+  severityLabel(m: Mesure) { return getSeverityLabel(getSeverity(m)); }
 }
