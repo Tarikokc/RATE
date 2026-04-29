@@ -2,16 +2,15 @@
 """
 simulate_sensor.py
 ──────────────────
-Simule des capteurs pour tester le chauffage sans matériel.
+Simule tous les capteurs présents dans la table `sensors`.
 À lancer EN PARALLÈLE du backend Flask.
 
-    # 1. Enregistre les sensors virtuels (une seule fois)
-    python simulate_sensor.py --setup
+Comportement :
+  - Capteur assigné à une salle  → température réagit aux décisions de chauffage (relay_state.json)
+  - Capteur non assigné           → mesures aléatoires stables (humidite, CO2, temp neutre)
 
-    # 2. Lance la simulation
+Usage :
     python simulate_sensor.py
-
-    # Options
     python simulate_sensor.py --interval 10 --start-temp 17
 """
 
@@ -45,40 +44,47 @@ def _conn() -> sqlite3.Connection:
     return c
 
 
-def get_rooms_with_sensor() -> list[dict]:
-    """Retourne uniquement les salles qui ont DÉJÀ un sensor_id réel en base."""
+def load_simulation_targets() -> list[dict]:
+    """
+    Construit la liste des cibles à simuler depuis la DB.
+
+    Retourne une liste de dicts :
+      {
+        sensor_id : str,
+        room_id   : int | None,
+        room_name : str | None,
+      }
+    """
     with _conn() as c:
-        return [
+        sensors = [dict(r) for r in c.execute("SELECT sensor_id FROM sensors").fetchall()]
+        # Map sensor_id -> room (si assigné)
+        rooms = [
             dict(r) for r in
             c.execute("SELECT id, name, sensor_id FROM rooms WHERE sensor_id IS NOT NULL AND sensor_id != ''").fetchall()
         ]
 
+    room_by_sensor: dict[str, dict] = {r["sensor_id"]: r for r in rooms}
 
-def get_all_rooms() -> list[dict]:
-    with _conn() as c:
-        return [dict(r) for r in c.execute("SELECT id, name, sensor_id FROM rooms").fetchall()]
-
-
-def register_sensor(sensor_id: str) -> None:
-    with _conn() as c:
-        c.execute(
-            "INSERT OR IGNORE INTO sensors (sensor_id, last_seen) VALUES (?, ?)",
-            (sensor_id, datetime.now().isoformat()),
-        )
-
-
-def assign_sensor_to_room(room_id: int, sensor_id: str) -> None:
-    with _conn() as c:
-        c.execute("UPDATE rooms SET sensor_id=? WHERE id=?", (sensor_id, room_id))
+    targets = []
+    for s in sensors:
+        sid  = s["sensor_id"]
+        room = room_by_sensor.get(sid)
+        targets.append({
+            "sensor_id": sid,
+            "room_id"  : room["id"]   if room else None,
+            "room_name": room["name"] if room else None,
+        })
+    return targets
 
 
-def insert_measure(sensor_id: str, room_id: int, temp: float) -> None:
+def insert_measure(sensor_id: str, room_id: int | None, temp: float) -> None:
     with _conn() as c:
         c.execute(
             "INSERT INTO measures (sensor_id, room_id, temp, hum, co2, motion, timestamp)"
             " VALUES (?,?,?,?,?,?,?)",
             (
-                sensor_id, room_id,
+                sensor_id,
+                room_id,
                 round(temp, 2),
                 round(random.uniform(40, 60), 1),
                 round(random.uniform(400, 900)),
@@ -98,84 +104,68 @@ def get_relay_state() -> dict[int, bool]:
         return {}
 
 
-# ── Setup mode ────────────────────────────────────────────────────────────────
-
-def do_setup() -> None:
-    """
-    Enregistre un capteur simulé UNIQUEMENT pour les salles qui ont déjà
-    un vrai sensor_id en base. Les salles sans capteur sont ignorées.
-    """
-    rooms_with_sensor = get_rooms_with_sensor()
-    all_rooms         = get_all_rooms()
-    skipped           = [r for r in all_rooms if not r["sensor_id"]]
-
-    if not rooms_with_sensor:
-        log.error(
-            "Aucune salle n'a de sensor_id en base.\n"
-            "Les salles sans capteur physique associé ne peuvent pas être simulées."
-        )
-        sys.exit(1)
-
-    log.info(f"── Setup : {len(rooms_with_sensor)} salle(s) avec capteur détectées ──")
-    for room in rooms_with_sensor:
-        real_sid = room["sensor_id"]
-        # On crée un sensor simulé avec le même ID que le vrai (ou un alias sim-)
-        # Le plus simple : on garde le sensor_id existant et on ajoute des mesures dessus
-        register_sensor(real_sid)  # INSERT OR IGNORE — ne casse rien si déjà présent
-        log.info(f"  ✓ '{room['name']}' (id={room['id']}) → sensor_id='{real_sid}' (conservé tel quel)")
-
-    if skipped:
-        log.info(f"\n── {len(skipped)} salle(s) ignorées (pas de capteur) :")
-        for r in skipped:
-            log.info(f"  ⊘ '{r['name']}' (id={r['id']})")
-
-    log.info("\nSetup terminé ✓ — Lance maintenant : python simulate_sensor.py")
-
-
 # ── Simulation ────────────────────────────────────────────────────────────────
 
 def simulate(interval: int, start_temp: float) -> None:
-    """
-    Simule uniquement les salles qui ont un sensor_id en base.
-    Ne crée AUCUN capteur — utilise ceux déjà présents.
-    """
-    rooms = get_rooms_with_sensor()
+    targets = load_simulation_targets()
 
-    if not rooms:
+    if not targets:
         log.error(
-            "Aucune salle avec sensor_id trouvée en base.\n"
-            "Assigne d'abord un capteur physique (ou virtuel via --setup) à au moins une salle."
+            "Aucun capteur trouvé dans la table `sensors`.\n"
+            "Ajoute d'abord un capteur via l'API ou insere-le manuellement en DB."
         )
         sys.exit(1)
 
-    temps: dict[int, float] = {r["id"]: start_temp for r in rooms}
+    assigned   = [t for t in targets if t["room_id"] is not None]
+    unassigned = [t for t in targets if t["room_id"] is None]
 
-    log.info(f"Simulation démarrée — {len(rooms)} salle(s) | interval={interval}s | target={TARGET_TEMP}°C")
-    for r in rooms:
-        log.info(f"  • {r['name']:15s} sensor={r['sensor_id']}")
+    log.info(f"Simulation démarrée — {len(targets)} capteur(s) | interval={interval}s | target={TARGET_TEMP}°C")
+
+    if assigned:
+        log.info(f"  🏠 {len(assigned)} assigné(s) à une salle (réagissent au chauffage) :")
+        for t in assigned:
+            log.info(f"      • {t['room_name']:15s}  sensor={t['sensor_id']}")
+
+    if unassigned:
+        log.info(f"  🔌 {len(unassigned)} non assigné(s) (mesures aléatoires) :")
+        for t in unassigned:
+            log.info(f"      • sensor={t['sensor_id']}")
+
     log.info("Ctrl+C pour arrêter\n")
+
+    # Temp initiale par capteur
+    temps: dict[str, float] = {t["sensor_id"]: start_temp for t in targets}
 
     while True:
         relay = get_relay_state()
         print(f"── {datetime.now().strftime('%H:%M:%S')} {'─' * 40}")
 
-        for room in rooms:
-            rid = room["id"]
-            on  = relay.get(rid, False)
+        for t in targets:
+            sid     = t["sensor_id"]
+            rid     = t["room_id"]
+            on      = relay.get(rid, False) if rid is not None else False
+            label   = t["room_name"] if t["room_name"] else f"[{sid}]"
 
-            if on:
-                temps[rid] += random.uniform(0.08, 0.15)   # ~+1°C / 5 min
+            if rid is not None:
+                # Capteur assigné : temp réagit au relais
+                if on:
+                    temps[sid] += random.uniform(0.08, 0.15)   # ~+1°C / 5 min
+                else:
+                    temps[sid] -= random.uniform(0.02, 0.06)   # ~-0.3°C / 5 min
+                temps[sid] = round(max(13.0, min(35.0, temps[sid])), 2)
+                icon = "🔥" if on else "❄️ "
             else:
-                temps[rid] -= random.uniform(0.02, 0.06)   # ~-0.3°C / 5 min
+                # Capteur non assigné : légère variation aléatoire autour de start_temp
+                temps[sid] += random.uniform(-0.05, 0.05)
+                temps[sid] = round(max(13.0, min(35.0, temps[sid])), 2)
+                icon = "🔌"
 
-            temps[rid] = round(max(13.0, min(35.0, temps[rid])), 2)
-            insert_measure(room["sensor_id"], rid, temps[rid])
+            insert_measure(sid, rid, temps[sid])
 
-            bar_len  = 20
-            filled   = max(0, min(bar_len, int((temps[rid] - 13) / (35 - 13) * bar_len)))
-            bar      = "█" * filled + "░" * (bar_len - filled)
-            icon     = "🔥" if on else "❄️ "
-            log.info(f"  {icon} {room['name']:15s} [{bar}] {temps[rid]:5.1f}°C")
+            bar_len = 20
+            filled  = max(0, min(bar_len, int((temps[sid] - 13) / (35 - 13) * bar_len)))
+            bar     = "█" * filled + "░" * (bar_len - filled)
+            log.info(f"  {icon} {label:18s} [{bar}] {temps[sid]:5.1f}°C")
 
         print()
         time.sleep(interval)
@@ -187,13 +177,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simulateur capteur RATE")
     parser.add_argument("--interval",   type=int,   default=30,   help="Secondes entre mesures (défaut: 30)")
     parser.add_argument("--start-temp", type=float, default=17.0, help="Température initiale (défaut: 17.0)")
-    parser.add_argument("--setup",      action="store_true",      help="Enregistre les sensors virtuels (uniquement les salles avec capteur existant)")
     args = parser.parse_args()
 
-    if args.setup:
-        do_setup()
-    else:
-        try:
-            simulate(args.interval, args.start_temp)
-        except KeyboardInterrupt:
-            log.info("\nSimulateur arrêté proprement.")
+    try:
+        simulate(args.interval, args.start_temp)
+    except KeyboardInterrupt:
+        log.info("\nSimulateur arrêté proprement.")
