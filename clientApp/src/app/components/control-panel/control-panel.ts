@@ -427,7 +427,7 @@ export class ControlPanelComponent implements OnDestroy {
   selectedRoomId: number | null = null;
   weekStart: Date = this.getMonday(new Date());
   weekDays: Date[] = [];
-  hours = Array.from({ length: 14 }, (_, i) => i + 7);
+  hours = Array.from({ length: 17 }, (_, i) => i + 7);
   showModal = false;
   selectedSlot: { date: Date; hour: number } | null = null;
   form = { title: '', user_name: '', people_count: 1, duration: 60 };
