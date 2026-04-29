@@ -45,7 +45,16 @@ def _conn() -> sqlite3.Connection:
     return c
 
 
-def get_rooms() -> list[dict]:
+def get_rooms_with_sensor() -> list[dict]:
+    """Retourne uniquement les salles qui ont DÉJÀ un sensor_id réel en base."""
+    with _conn() as c:
+        return [
+            dict(r) for r in
+            c.execute("SELECT id, name, sensor_id FROM rooms WHERE sensor_id IS NOT NULL AND sensor_id != ''").fetchall()
+        ]
+
+
+def get_all_rooms() -> list[dict]:
     with _conn() as c:
         return [dict(r) for r in c.execute("SELECT id, name, sensor_id FROM rooms").fetchall()]
 
@@ -92,29 +101,50 @@ def get_relay_state() -> dict[int, bool]:
 # ── Setup mode ────────────────────────────────────────────────────────────────
 
 def do_setup() -> None:
-    rooms = get_rooms()
-    if not rooms:
-        log.error("Aucune salle trouvée. Crée d'abord des salles via l'API.")
+    """
+    Enregistre un capteur simulé UNIQUEMENT pour les salles qui ont déjà
+    un vrai sensor_id en base. Les salles sans capteur sont ignorées.
+    """
+    rooms_with_sensor = get_rooms_with_sensor()
+    all_rooms         = get_all_rooms()
+    skipped           = [r for r in all_rooms if not r["sensor_id"]]
+
+    if not rooms_with_sensor:
+        log.error(
+            "Aucune salle n'a de sensor_id en base.\n"
+            "Les salles sans capteur physique associé ne peuvent pas être simulées."
+        )
         sys.exit(1)
 
-    log.info("── Setup : enregistrement des sensors virtuels ──")
-    for room in rooms:
-        sid = f"sim-room-{room['id']}"
-        register_sensor(sid)
-        assign_sensor_to_room(room["id"], sid)
-        log.info(f"  '{room['name']}' (id={room['id']}) → sensor_id='{sid}'")
-    log.info("Setup terminé ✓ — Lance maintenant : python simulate_sensor.py")
+    log.info(f"── Setup : {len(rooms_with_sensor)} salle(s) avec capteur détectées ──")
+    for room in rooms_with_sensor:
+        real_sid = room["sensor_id"]
+        # On crée un sensor simulé avec le même ID que le vrai (ou un alias sim-)
+        # Le plus simple : on garde le sensor_id existant et on ajoute des mesures dessus
+        register_sensor(real_sid)  # INSERT OR IGNORE — ne casse rien si déjà présent
+        log.info(f"  ✓ '{room['name']}' (id={room['id']}) → sensor_id='{real_sid}' (conservé tel quel)")
+
+    if skipped:
+        log.info(f"\n── {len(skipped)} salle(s) ignorées (pas de capteur) :")
+        for r in skipped:
+            log.info(f"  ⊘ '{r['name']}' (id={r['id']})")
+
+    log.info("\nSetup terminé ✓ — Lance maintenant : python simulate_sensor.py")
 
 
 # ── Simulation ────────────────────────────────────────────────────────────────
 
 def simulate(interval: int, start_temp: float) -> None:
-    rooms = [r for r in get_rooms() if r["sensor_id"]]
+    """
+    Simule uniquement les salles qui ont un sensor_id en base.
+    Ne crée AUCUN capteur — utilise ceux déjà présents.
+    """
+    rooms = get_rooms_with_sensor()
 
     if not rooms:
         log.error(
-            "Aucune salle avec sensor_id.\n"
-            "Lance d'abord : python simulate_sensor.py --setup"
+            "Aucune salle avec sensor_id trouvée en base.\n"
+            "Assigne d'abord un capteur physique (ou virtuel via --setup) à au moins une salle."
         )
         sys.exit(1)
 
@@ -157,7 +187,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simulateur capteur RATE")
     parser.add_argument("--interval",   type=int,   default=30,   help="Secondes entre mesures (défaut: 30)")
     parser.add_argument("--start-temp", type=float, default=17.0, help="Température initiale (défaut: 17.0)")
-    parser.add_argument("--setup",      action="store_true",      help="Enregistre les sensors virtuels")
+    parser.add_argument("--setup",      action="store_true",      help="Enregistre les sensors virtuels (uniquement les salles avec capteur existant)")
     args = parser.parse_args()
 
     if args.setup:
