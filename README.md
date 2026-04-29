@@ -706,4 +706,6 @@ git push origin v1.1.0
 
 Fait avec ❤️ — IoT, Flask, Angular & Raspberry Pi
 
+RATE composé de Emilien BILLAUD, Anthony SELIN, Randy SAPA et Tarik OUKACI
+
 </div>
