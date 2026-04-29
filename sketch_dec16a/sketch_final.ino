@@ -5,46 +5,95 @@
 
 const char* ssid      = "iPhone de Tarik";
 const char* password  = "TarikArt942003";
-// ↓ Seul endroit à modifier si l'IP change
-const char* serverUrl = "http://172.20.10.2:5000/api/measures";
+const char* serverUrl = "http://172.20.10.8:5000/api/measures";
 
 #define BME_SDA D6
 #define BME_SCL D5
 const int PIR_PIN = D2;
 
 SensirionI2cScd4x scd4x;
+String sensorId;
+bool sensorOk = false;
+
+bool connectWifi() {
+  WiFi.persistent(false);
+  WiFi.disconnect(true);
+  delay(200);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  Serial.print("WiFi connexion");
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+    delay(500); Serial.print("."); attempts++;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nConnecté : " + WiFi.localIP().toString());
+    return true;
+  }
+  Serial.println("\nEchec WiFi");
+  return false;
+}
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
   pinMode(PIR_PIN, INPUT);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
-  Serial.println("\nConnecté WiFi : " + WiFi.localIP().toString());
+  sensorId = "esp8266-" + String(ESP.getChipId(), HEX);
+  Serial.println("Sensor ID : " + sensorId);
+
+  connectWifi();
 
   Wire.begin(BME_SDA, BME_SCL);
   scd4x.begin(Wire, 0x62);
-  scd4x.startPeriodicMeasurement();
-  Serial.println("SCD40 démarré");
+  scd4x.stopPeriodicMeasurement();
+  delay(500);
+  uint16_t err = scd4x.startPeriodicMeasurement();
+  if (err) {
+    Serial.println("SCD40 non détecté (err=" + String(err) + ") → mode données fictives");
+    sensorOk = false;
+  } else {
+    Serial.println("SCD40 démarré");
+    sensorOk = true;
+  }
   delay(5000);
 }
 
 void loop() {
-  uint16_t co2;
-  float temp, hum;
-  scd4x.readMeasurement(co2, temp, hum);
-  int motion = digitalRead(PIR_PIN);
+  uint16_t co2 = 0;
+  float temp = 0, hum = 0;
 
-  Serial.printf("CO2=%d T=%.2f H=%.2f M=%d\n", co2, temp, hum, motion);
+  if (sensorOk) {
+    uint16_t err = scd4x.readMeasurement(co2, temp, hum);
+    if (err) {
+      Serial.println("Erreur lecture SCD40 : " + String(err) + " → données fictives");
+      sensorOk = false;
+    }
+  }
+
+  // Données fictives si capteur absent
+  if (!sensorOk) {
+    co2  = 400 + random(-20, 20);
+    temp = 20.0 + random(-10, 10) / 10.0;
+    hum  = 50.0 + random(-50, 50) / 10.0;
+  }
+
+  int motion = digitalRead(PIR_PIN);
+  Serial.printf("[%s] CO2=%d T=%.2f H=%.2f M=%d%s\n",
+    sensorId.c_str(), co2, temp, hum, motion,
+    sensorOk ? "" : " [FAKE]");
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi perdu, reconnexion...");
+    connectWifi();
+  }
 
   if (WiFi.status() == WL_CONNECTED) {
     String payload = "{";
-    payload += "\"sensor_id\":\"esp8266-1\",";
-    payload += "\"co2\":"    + String(co2)        + ",";
-    payload += "\"temp\":"   + String(temp, 2)    + ",";
-    payload += "\"hum\":"    + String(hum, 2)     + ",";
+    payload += "\"sensor_id\":\"" + sensorId + "\",";
+    payload += "\"co2\":"    + String(co2)     + ",";
+    payload += "\"temp\":"   + String(temp, 2) + ",";
+    payload += "\"hum\":"    + String(hum, 2)  + ",";
     payload += "\"motion\":" + String(motion);
     payload += "}";
 
@@ -53,9 +102,10 @@ void loop() {
     if (http.begin(client, serverUrl)) {
       http.addHeader("Content-Type", "application/json");
       int code = http.POST(payload);
-      Serial.println("HTTP POST: " + String(code));
+      Serial.println("POST -> " + String(code));
       http.end();
     }
   }
+
   delay(5000);
 }
