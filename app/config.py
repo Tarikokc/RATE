@@ -14,7 +14,7 @@ class Config:
 
     TARGET_TEMP = float(os.getenv("TARGET_TEMP", "20.0"))
     HEAT_ADVANCE_MIN = int(os.getenv("HEAT_ADVANCE_MIN", "60"))
-    DEG_PER_HOUR = float(os.getenv("DEG_PER_HOUR", "2.5"))
+    DEG_PER_HOUR = float(os.getenv("DEG_PER_HOUR", "6.0"))
     TEMP_TOLERANCE = float(os.getenv("TEMP_TOLERANCE", "0.5"))
 
     WEATHER_LATITUDE = float(os.getenv("WEATHER_LATITUDE", "48.8566"))

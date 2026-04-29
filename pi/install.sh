@@ -7,9 +7,9 @@
 
 set -e
 
-PROJECT_DIR="/home/pi/RATE"
+PROJECT_DIR="/home/customer/Documents/RATE/pi"
 SERVICE="rate"
-
+PROJECT="/home/customer/Documents/RATE"
 echo ""
 echo "============================================="
 echo "  RATE — Installation Raspberry Pi"
@@ -26,28 +26,42 @@ sudo apt install -y nginx
 
 # --- 3. Creer le virtualenv ---
 echo "[3/9] Creation du virtualenv Python..."
-cd "$PROJECT_DIR"
+cd "$PROJECT"
 python3 -m venv venv
 source venv/bin/activate
 
 # --- 4. Installer les dependances Python ---
 echo "[4/9] Installation des dependances Python..."
 pip install --upgrade pip --quiet
-pip install -r requirements.txt --quiet
+pip install -r /home/customer/Documents/RATE/requirements.txt --quiet
+
+# --- 4.1.5. Installation de Node.js et npm ---
+echo "[5/9] Installation de Node.js..."
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+node -v
+npm -v
+
+# --- 4.5. Build du front Angular ---
+echo "[5/9] Build du front Angular..."
+cd "$PROJECT/clientApp"
+npm install --silent
+npx ng build --configuration=production
+cd "$PROJECT"
 
 # --- 5. Creer les dossiers necessaires ---
 echo "[5/9] Creation des dossiers..."
-mkdir -p "$PROJECT_DIR/data"
-mkdir -p "$PROJECT_DIR/logs"
+mkdir -p "$PROJECT/data"
+mkdir -p "$PROJECT/logs"
 
 # --- 6. Configurer le .env ---
 echo "[6/9] Configuration du .env..."
-if [ ! -f "$PROJECT_DIR/.env" ]; then
-  cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
+if [ ! -f "$PROJECT/.env" ]; then
+  cp "$PROJECT/.env.example" "$PROJECT/.env"
   PI_IP=$(hostname -I | awk '{print $1}')
-  sed -i "s|API_URL=.*|API_URL=http://$PI_IP:80|" "$PROJECT_DIR/.env"
-  sed -i "s|DB_PATH=.*|DB_PATH=/home/pi/RATE/data/rate.db|" "$PROJECT_DIR/.env"
-  sed -i "s|FLASK_ENV=.*|FLASK_ENV=prod|" "$PROJECT_DIR/.env"
+  sed -i "s|API_URL=.*|API_URL=http://$PI_IP:80|" "$PROJECT/.env"
+  sed -i "s|DB_PATH=.*|DB_PATH=/home/customer/Documents/RATE/data/rate.db|" "$PROJECT/.env"
+  sed -i "s|FLASK_ENV=.*|FLASK_ENV=prod|" "$PROJECT/.env"
   echo "  .env cree automatiquement avec IP=$PI_IP"
   echo "  Verifie /home/pi/RATE/.env si besoin."
 else
@@ -56,7 +70,7 @@ fi
 
 # --- 7. Installer le service systemd ---
 echo "[7/9] Installation du service systemd..."
-sudo cp "$PROJECT_DIR/pi/rate.service" /etc/systemd/system/rate.service
+sudo cp "$PROJECT_DIR/rate.service" /etc/systemd/system/rate.service
 sudo systemctl daemon-reload
 sudo systemctl enable rate
 sudo systemctl start rate
@@ -72,7 +86,7 @@ fi
 
 # --- 8. Configurer Nginx ---
 echo "[8/9] Configuration de Nginx..."
-sudo cp "$PROJECT_DIR/pi/rate.nginx" /etc/nginx/sites-available/rate
+sudo cp "$PROJECT_DIR/rate.nginx" /etc/nginx/sites-available/rate
 sudo ln -sf /etc/nginx/sites-available/rate /etc/nginx/sites-enabled/rate
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
@@ -90,7 +104,7 @@ if curl -s "http://localhost/api/rooms" > /dev/null; then
 else
   echo ""
   echo "  ATTENTION : l'API ne repond pas encore."
-  echo "  Verifie les logs : tail -f /home/pi/RATE/logs/error.log"
+  echo "  Verifie les logs : tail -f /home/customer/Documents/RATE/logs/error.log"
 fi
 
 echo ""

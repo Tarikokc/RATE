@@ -3,16 +3,19 @@ Description=RATE Flask API
 After=network.target
 
 [Service]
-User=pi
-WorkingDirectory=/home/pi/RATE
-EnvironmentFile=/home/pi/RATE/.env
-ExecStart=/home/pi/RATE/venv/bin/gunicorn \
+User=customer
+Group=gpio
+WorkingDirectory=/home/customer/Documents/RATE
+EnvironmentFile=/home/customer/Documents/RATE/.env
+
+ExecStart=/home/customer/Documents/RATE/venv/bin/gunicorn \
     --bind 127.0.0.1:5000 \
     --workers 2 \
     --timeout 60 \
-    --access-logfile /home/pi/RATE/logs/access.log \
-    --error-logfile /home/pi/RATE/logs/error.log \
+    --access-logfile /home/customer/Documents/RATE/logs/access.log \
+    --error-logfile /home/customer/Documents/RATE/logs/error.log \
     server:app
+
 Restart=always
 RestartSec=5
 

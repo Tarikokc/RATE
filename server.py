@@ -28,10 +28,15 @@ app.register_blueprint(heating_bp)
 app.register_blueprint(predict_bp)
 app.register_blueprint(config_bp)
 
+
 with app.app_context():
     init_db()
 
-DIST = os.path.join(os.path.dirname(__file__), "clientApp", "dist", "client-app", "browser")
+# Démarrage de la boucle de chauffage (GPIO + scheduler)
+from app.heating_loop import start_scheduler
+start_scheduler()
+
+DIST = os.path.join(os.path.dirname(__file__), "clientApp", "dist", "clientApp", "browser")
 
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
