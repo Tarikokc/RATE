@@ -1,12 +1,13 @@
 # RATE — Room Automation & Temperature Engine
 
-> Plateforme IoT de supervision de salles connectées — mesures environnementales, gestion des réservations et aide à la décision de chauffage, déployable sur Raspberry Pi.
+> Plateforme IoT de supervision et d'automatisation de salles connectées — mesures environnementales en temps réel, gestion des réservations, décision intelligente de chauffage et déploiement embarqué sur Raspberry Pi.
 
-![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=flat-square&logo=python&logoColor=white)
-![Flask](https://img.shields.io/badge/Flask-3.x-000000?style=flat-square&logo=flask&logoColor=white)
-![Angular](https://img.shields.io/badge/Angular-19-DD0031?style=flat-square&logo=angular&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
-![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-A22846?style=flat-square&logo=raspberrypi&logoColor=white)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![Flask](https://img.shields.io/badge/Flask-3.x-000000?style=flat-square&logo=flask&logoColor=white)](https://flask.palletsprojects.com)
+[![Angular](https://img.shields.io/badge/Angular-19-DD0031?style=flat-square&logo=angular&logoColor=white)](https://angular.io)
+[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org)
+[![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-A22846?style=flat-square&logo=raspberrypi&logoColor=white)](https://raspberrypi.org)
+[![ESP8266](https://img.shields.io/badge/ESP8266-IoT-blue?style=flat-square)](https://www.espressif.com)
 
 ---
 
@@ -14,71 +15,91 @@
 
 - [Vue d'ensemble](#vue-densemble)
 - [Fonctionnalités](#fonctionnalités)
-- [Architecture](#architecture)
+- [Architecture système](#architecture-système)
 - [Structure du projet](#structure-du-projet)
 - [Stack technique](#stack-technique)
 - [Installation locale](#installation-locale)
-- [Configuration](#configuration)
+- [Configuration (.env)](#configuration-env)
 - [Lancer le projet](#lancer-le-projet)
 - [Frontend Angular](#frontend-angular)
-- [Référence API](#référence-api)
-- [Logique de chauffage](#logique-de-chauffage)
+- [Référence API complète](#référence-api-complète)
+- [Moteur de chauffage](#moteur-de-chauffage)
+- [Boucle d'automatisation (Heating Loop)](#boucle-dautomatisation-heating-loop)
+- [Firmware ESP8266](#firmware-esp8266)
 - [Déploiement Raspberry Pi](#déploiement-raspberry-pi)
-- [Branches et workflow](#branches-et-workflow)
+- [Branches et workflow Git](#branches-et-workflow-git)
 
 ---
 
 ## Vue d'ensemble
 
-RATE centralise la supervision de salles équipées de capteurs environnementaux. Le système collecte les données en temps réel, les expose via une API REST, affiche un dashboard Angular et décide automatiquement s'il faut déclencher le chauffage avant une réservation.
+RATE centralise la supervision de salles équipées de capteurs environnementaux (ESP8266 + SCD40). Le système :
 
-L'objectif est une base propre, légère et déployable en un script sur une Raspberry Pi — sans infrastructure lourde, sans cloud obligatoire.
+1. **Collecte** les mesures (température, humidité, CO2, mouvement) envoyées par les capteurs via HTTP
+2. **Stocke** les données dans SQLite avec horodatage UTC
+3. **Analyse** et décide automatiquement si une salle doit être préchauffée avant une réservation
+4. **Contrôle** les relais physiques (GPIO sur Raspberry Pi) pour allumer/éteindre le chauffage
+5. **Expose** une API REST consommée par un dashboard Angular
+
+L'ensemble est **déployable en un script** sur une Raspberry Pi — sans cloud, sans infrastructure lourde.
 
 ---
 
 ## Fonctionnalités
 
-- **Collecte des mesures** — réception des données capteurs (temp, humidité, CO2, mouvement) via POST
-- **Historisation** — stockage SQLite, requêtes filtrées par capteur, salle ou limite
-- **Gestion des salles** — création, association capteur/salle, statut en temps réel
-- **Gestion des réservations** — réservation en cours, prochaine réservation imminente
-- **Décision de chauffage** — moteur de décision basé sur la température courante, la cible et les réservations
-- **Prédiction** — endpoint ML pour l'anticipation de la température (`/api/predict`)
-- **Météo externe** — intégration Open-Meteo pour données météorologiques locales
-- **Dashboard Angular** — interface de visualisation et de supervision
-- **Déploiement embarqué** — scripts clés en main pour Raspberry Pi (systemd + Nginx)
+### Supervision
+- 📡 Réception des mesures capteurs en temps réel (temp, humidité, CO2, mouvement)
+- 📊 Dashboard Angular avec historique, alertes et statut des salles
+- 🌤️ Intégration météo Open-Meteo (données extérieures en temps réel)
+- 🔮 Prédiction ML de température (`/api/predict` — modèle TFLite embarqué)
+
+### Réservations
+- 📅 Gestion complète des réservations par salle (CRUD)
+- 🗓️ Vue planning hebdomadaire dans le panneau de contrôle Angular
+- ⚡ Chargement instantané — cache in-memory, zéro requête HTTP au clic
+
+### Automatisation du chauffage
+- 🔥 Moteur de décision : STANDBY / PRECHAUFFAGE / EN_CHAUFFE / CIBLE_ATTEINTE / SURCHAUFFE
+- ⏰ Boucle APScheduler toutes les 5 minutes (évaluation de toutes les salles)
+- 🎛️ Contrôle GPIO physique des relais (avec fallback mock sur PC)
+- 📡 L'ESP interroge l'état de son relais après chaque envoi de mesure
+- 🧪 Mode simulation intégré dans le firmware ESP (fakeTemp monte/descend selon relais)
+
+### Infrastructure
+- 🐍 API Flask avec Blueprints modulaires
+- 📦 Déploiement Gunicorn + Nginx sur Raspberry Pi
+- 🔄 Scripts `install.sh` / `update.sh` clés en main
+- 🕐 Gestion rigoureuse des fuseaux horaires (stockage UTC, comparaisons UTC-safe)
 
 ---
 
-## Architecture
+## Architecture système
 
 ```
-Capteurs / microcontrôleurs (Arduino, ESP)
-              │
-              │  POST /api/measures
-              ▼
-        ┌─────────────┐
-        │  Flask API  │  ◄── app/routes/*.py (Blueprints)
-        │             │
-        │  app/        │  ◄── config, database, services, helpers
-        └──────┬──────┘
-               │
-               ▼
-          SQLite (data/rate.db)
-               │
-       ┌───────┴────────┐
-       │                │
-       ▼                ▼
-  Logique chauffage   Prédiction ML
-  heating_controller  routes/predict
-       │
-       ▼
-  Dashboard Angular
-  (clientApp/dist/ servi par Flask)
-       │
-       ▼
-  Gunicorn + Nginx
-  Raspberry Pi — accessible sur le réseau local
+┌─────────────────────────────────────────────────────────────────┐
+│                        Réseau local WiFi                         │
+│                                                                   │
+│  ┌─────────────────┐          ┌──────────────────────────────┐  │
+│  │   ESP8266        │          │      Raspberry Pi             │  │
+│  │                 │          │                               │  │
+│  │  SCD40 Sensor   │          │  ┌─────────┐  ┌──────────┐  │  │
+│  │  (CO2/Temp/Hum) │──POST──► │  │  Nginx  │  │ systemd  │  │  │
+│  │  PIR Motion     │          │  │  :80    │  │ rate.svc │  │  │
+│  │                 │◄─relay─  │  └────┬────┘  └────┬─────┘  │  │
+│  │  [FAKE mode]    │   state  │       │              │        │  │
+│  │  fakeTemp ↑↓   │          │  ┌────▼──────────────▼─────┐ │  │
+│  └─────────────────┘          │  │     Flask API :5000      │ │  │
+│                                │  │                          │ │  │
+│  ┌─────────────────┐          │  │  ┌────────────────────┐  │ │  │
+│  │  Navigateur     │          │  │  │  Heating Loop       │  │ │  │
+│  │  Angular UI     │◄────────►│  │  │  (APScheduler 5min)│  │ │  │
+│  │  Dashboard      │          │  │  │  → GPIO relais      │  │ │  │
+│  │  Planning       │          │  │  └────────────────────┘  │ │  │
+│  │  Contrôle       │          │  │                          │ │  │
+│  └─────────────────┘          │  │  SQLite (data/rate.db)   │ │  │
+│                                │  └──────────────────────────┘ │  │
+│                                └──────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -87,42 +108,49 @@ Capteurs / microcontrôleurs (Arduino, ESP)
 
 ```
 RATE/
-├── server.py                  # Point d'entrée Flask — init, blueprints, serve Angular
+├── server.py                    # Point d'entrée Flask — init DB, blueprints, serve Angular, démarrage scheduler
 │
 ├── app/
-│   ├── config.py              # Configuration centralisée via .env
-│   ├── database.py            # Accès SQLite via flask.g, init_db, schema
-│   ├── time_helper.py         # now_local(), to_local() — datetime standardisé Europe/Paris
-│   ├── weather.py             # Intégration Open-Meteo
-│   ├── heating_controller.py  # Moteur de décision chauffage
-│   ├── measures_service.py    # Service de lecture des mesures
-│   ├── routes/
-│   │   ├── measures.py        # POST /api/measures — GET /api/measures — /api/last — /api/all
-│   │   ├── rooms.py           # CRUD salles, statut, association capteur
-│   │   ├── sensors.py         # Liste des capteurs actifs
-│   │   ├── reservations.py    # Gestion des réservations
-│   │   ├── heating.py         # GET /api/heating/decision/<room_id>
-│   │   └── predict.py         # GET /api/predict — inférence modèle TFLite
-│   └── scripts/               # Scripts utilitaires (import, migration...)
+│   ├── config.py                # Configuration centralisée via .env (TARGET_TEMP, DEG_PER_HOUR...)
+│   ├── database.py              # Accès SQLite, init_db(), schéma des tables
+│   ├── time_helper.py           # now_local(), to_local() — datetime standardisé Europe/Paris
+│   ├── weather.py               # Intégration Open-Meteo
+│   ├── measures_service.py      # get_last_temp_for_room() et autres lectures mesures
+│   ├── heating_controller.py    # Moteur de décision chauffage (_parse_dt UTC-safe, états)
+│   ├── heating_loop.py          # Boucle APScheduler + contrôle GPIO + relay_state.json
+│   ├── gpio_mock.py             # Mock RPi.GPIO pour développement sur PC
+│   └── routes/
+│       ├── measures.py          # POST /api/measures, GET /api/measures, /api/last, /api/all
+│       ├── rooms.py             # CRUD /api/rooms, /api/rooms/status
+│       ├── sensors.py           # GET /api/sensors
+│       ├── reservations.py      # CRUD /api/reservations
+│       ├── heating.py           # /api/heating/* (decision, state, sensor-state, trigger)
+│       └── predict.py           # GET /api/predict — inférence TFLite
 │
 ├── clientApp/
-│   ├── src/                   # Sources Angular (components, services, models)
-│   ├── dist/                  # Build de production (servi par Flask en prod)
-│   └── angular.json           # Config Angular CLI
+│   ├── src/app/
+│   │   ├── components/
+│   │   │   ├── dashboard/       # Vue temps réel + graphiques
+│   │   │   ├── control-panel/   # Planning réservations + automation + alertes
+│   │   │   └── home/            # Vue d'accueil
+│   │   └── services/            # ReservationService, MesureService, HeatingService...
+│   └── dist/                    # Build production (servi par Flask, commité dans le repo)
 │
-├── data/                      # Fichiers runtime — rate.db (ignoré par git, structure gardée)
-├── logs/                      # Logs Gunicorn (access.log, error.log)
+├── sketch_dec16a/               # Firmware Arduino/ESP8266 (SCD40 + PIR + relay state)
 │
 ├── pi/
-│   ├── install.sh             # Installation complète Raspberry Pi (1 seule fois)
-│   ├── update.sh              # Mise à jour après git pull
-│   ├── rate.service           # Service systemd Gunicorn
-│   └── rate.nginx             # Config Nginx reverse proxy
+│   ├── install.sh               # Installation complète Pi (1 seule fois)
+│   ├── update.sh                # Mise à jour après git pull
+│   ├── rate.service             # Service systemd Gunicorn (Group=gpio pour les relais)
+│   └── rate.nginx               # Config Nginx reverse proxy
 │
-├── sketch_dec16a/             # Code Arduino / ESP (capteurs)
-├── .env.example               # Template de configuration
-├── requirements.txt           # Dépendances Python
-└── DEPLOY_PI.md               # Guide de déploiement détaillé Raspberry Pi
+├── data/
+│   └── relay_state.json         # État courant des relais par room_id (runtime)
+├── logs/                        # access.log, error.log (Gunicorn)
+├── .env.example                 # Template de configuration
+├── requirements.txt             # Dépendances Python
+├── DEPLOY_PI.md                 # Guide de déploiement détaillé
+└── organisation.md              # Notes d'organisation du projet
 ```
 
 ---
@@ -130,32 +158,45 @@ RATE/
 ## Stack technique
 
 ### Backend
-| Composant | Rôle |
-|---|---|
-| Python 3.9+ | Langage principal |
-| Flask 3.x | Framework API REST |
-| SQLite | Base de données embarquée |
-| flask-cors | Gestion CORS |
-| python-dotenv | Configuration via `.env` |
-| pytz | Gestion des fuseaux horaires |
-| open-meteo (openmeteo-requests) | Données météo en temps réel |
-| TFLite Runtime | Inférence modèle ML embarqué |
-| numpy | Calculs numériques |
-| Gunicorn | Serveur WSGI production |
+
+| Composant | Version | Rôle |
+|---|---|---|
+| Python | 3.9+ | Langage principal |
+| Flask | 3.x | Framework API REST |
+| SQLite | — | Base de données embarquée |
+| APScheduler | 3.x | Boucle de chauffage toutes les 5 min |
+| pytz | — | Gestion timezone Europe/Paris |
+| flask-cors | — | CORS pour le frontend dev |
+| python-dotenv | — | Configuration via `.env` |
+| Gunicorn | — | Serveur WSGI production |
+| openmeteo-requests | — | Données météo Open-Meteo |
+| TFLite Runtime | — | Inférence modèle ML embarqué |
+| RPi.GPIO | — | Contrôle GPIO (Raspberry Pi uniquement) |
 
 ### Frontend
+
+| Composant | Version | Rôle |
+|---|---|---|
+| Angular | 19 | Framework SPA |
+| TypeScript | 5.x | Langage frontend |
+| RxJS | — | Gestion asynchrone |
+
+### Matériel
+
 | Composant | Rôle |
 |---|---|
-| Angular 19 | Framework frontend |
-| TypeScript | Langage frontend |
-| CSS | Styles |
+| ESP8266 (NodeMCU) | Microcontrôleur WiFi — envoi des mesures |
+| SCD40 | Capteur CO2 / Température / Humidité (I2C) |
+| PIR | Détecteur de mouvement |
+| Raspberry Pi | Serveur embarqué + contrôle GPIO relais |
 
 ### Infrastructure
+
 | Composant | Rôle |
 |---|---|
 | Nginx | Reverse proxy, port 80 |
-| systemd | Démarrage automatique |
-| Raspberry Pi OS | Cible de déploiement |
+| systemd | Démarrage automatique du service |
+| Raspberry Pi OS | Cible de déploiement production |
 
 ---
 
@@ -163,8 +204,8 @@ RATE/
 
 ### Prérequis
 
-- Python 3.9 ou supérieur
-- Node.js 20+ (pour le frontend uniquement)
+- Python 3.9+
+- Node.js 20+ (frontend uniquement)
 - Git
 
 ### 1. Cloner le dépôt
@@ -179,15 +220,11 @@ git checkout develop
 
 ```bash
 python -m venv venv
-```
 
-**Windows**
-```bash
+# Windows
 venv\Scripts\activate
-```
 
-**Linux / macOS**
-```bash
+# Linux / macOS
 source venv/bin/activate
 ```
 
@@ -197,8 +234,9 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> Sur une machine sans Raspberry Pi, `tflite-runtime` peut échouer.
-> Dans ce cas, commentez la ligne dans `requirements.txt` pour le dev local.
+> Sur PC sans Raspberry Pi, `RPi.GPIO` est absent : le système bascule automatiquement sur `app/gpio_mock.py`. Pas d'action requise.
+
+> `tflite-runtime` peut échouer sur certaines architectures. Commentez la ligne dans `requirements.txt` si vous n'utilisez pas la prédiction ML.
 
 ### 4. Dossiers nécessaires
 
@@ -210,35 +248,32 @@ mkdir -p data logs
 
 ```bash
 cp .env.example .env
+# Éditez .env selon votre environnement
 ```
-
-Éditez `.env` selon votre environnement (voir section [Configuration](#configuration)).
 
 ---
 
-## Configuration
-
-Toute la configuration passe par le fichier `.env` à la racine. La classe `Config` dans `app/config.py` charge ces valeurs avec des valeurs par défaut.
+## Configuration (.env)
 
 ```env
-# Mode d'exécution : dev ou prod
+# Mode d'exécution
 FLASK_ENV=dev
 FLASK_HOST=0.0.0.0
 FLASK_PORT=5000
 
-# URL de base utilisée par le frontend Angular pour les appels API
+# URL de base — utilisée par Angular pour les appels API
 API_URL=http://127.0.0.1:5000
 
-# Chemin de la base SQLite
+# Base de données
 DB_PATH=data/rate.db
 
-# Paramètres chauffage
-TARGET_TEMP=20.0       # Température cible en °C
-HEAT_ADVANCE_MIN=60    # Marge d'anticipation avant réservation (minutes)
-DEG_PER_HOUR=2.5       # Vitesse estimée de montée en température (°C/h)
-TEMP_TOLERANCE=0.5     # Tolérance autour de la cible
+# Chauffage — paramètres du moteur de décision
+TARGET_TEMP=20.0        # Température cible en °C
+HEAT_ADVANCE_MIN=60     # Anticipation avant réservation (minutes)
+DEG_PER_HOUR=6.0        # Vitesse estimée de montée en °C/h
+TEMP_TOLERANCE=0.5      # Tolérance autour de la cible
 
-# Coordonnées GPS pour la météo Open-Meteo
+# Météo Open-Meteo (coordonnées GPS)
 WEATHER_LATITUDE=48.8566
 WEATHER_LONGITUDE=2.3522
 ```
@@ -247,103 +282,88 @@ WEATHER_LONGITUDE=2.3522
 
 ## Lancer le projet
 
-### Backend uniquement
+### Backend
 
 ```bash
 python server.py
 ```
 
-L'API est disponible sur `http://localhost:5000`.
+Au démarrage, Flask :
+1. Initialise la base SQLite (`init_db()`)
+2. Enregistre tous les Blueprints
+3. Lance le **heating scheduler** (APScheduler, toutes les 5 min)
+4. Exécute un **premier run immédiat** de la boucle de chauffage
+
+API disponible sur `http://localhost:5000`.
 
 ### Backend + Frontend (développement)
 
-**Terminal 1 — Backend**
 ```bash
+# Terminal 1 — Backend
 python server.py
-```
 
-**Terminal 2 — Frontend**
-```bash
+# Terminal 2 — Frontend
 cd clientApp
 ng serve
 ```
 
-Le frontend dev est disponible sur `http://localhost:4200` avec proxy vers le backend configuré dans `proxy.conf.json`.
+Frontend dev sur `http://localhost:4200` avec proxy vers le backend via `proxy.conf.json`.
+
+### Forcer un cycle de chauffage (test)
+
+```bash
+# Linux / macOS
+curl -X POST http://localhost:5000/api/heating/trigger
+
+# Windows PowerShell
+Invoke-WebRequest -Uri http://localhost:5000/api/heating/trigger -Method POST -UseBasicParsing
+```
 
 ---
 
 ## Frontend Angular
 
-### Installation des dépendances
-
 ```bash
 cd clientApp
 npm install
-```
 
-### Lancement en développement
-
-```bash
+# Développement
 ng serve
-```
 
-### Build de production
-
-```bash
+# Production
 ng build --configuration production
 ```
 
-Le build génère les fichiers statiques dans `clientApp/dist/client-app/browser/`.
-Ce dossier est servi directement par Flask en production via `server.py`.
+Le build (`clientApp/dist/`) est **servi directement par Flask** en production. Il est commité dans le repo pour éviter d'avoir besoin de Node.js sur la Raspberry Pi.
 
-> Le `dist/` est commité dans le repo pour éviter d'avoir besoin de Node.js sur la Raspberry Pi.
+### Panneau de contrôle — Planning des réservations
+
+Les réservations sont chargées **en parallèle au démarrage** pour toutes les salles et mises en cache in-memory. Le clic sur une salle est **instantané** (zéro requête HTTP), seules les créations et suppressions déclenchent un rechargement ciblé de la salle concernée.
 
 ---
 
-## Référence API
+## Référence API complète
 
 ### Mesures
 
-#### `POST /api/measures`
-Reçoit une mesure envoyée par un capteur.
+| Méthode | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/measures` | Reçoit une mesure depuis un capteur |
+| `GET` | `/api/measures` | Liste les mesures (filtres : `sensor_id`, `room_id`, `limit`) |
+| `GET` | `/api/last` | Dernière mesure + données météo |
+| `GET` | `/api/all` | Toutes les mesures (export) |
+| `GET` | `/api/weather` | Données météo Open-Meteo en temps réel |
 
+**Body POST `/api/measures` :**
 ```json
 {
-  "sensor_id": "SENSOR_01",
-  "temp": 21.4,
-  "hum": 45.0,
+  "sensor_id": "esp8266-cce70f",
+  "temp": 18.4,
+  "hum": 47.2,
   "co2": 612,
-  "motion": true
+  "motion": 1
 }
 ```
-
-Réponse : `{ "ok": true }` — `200 OK`
-
----
-
-#### `GET /api/measures`
-Historique des mesures, avec filtres optionnels.
-
-| Paramètre | Type | Description |
-|---|---|---|
-| `sensor_id` | string | Filtrer par capteur |
-| `room_id` | integer | Filtrer par salle |
-| `limit` | integer | Nombre de résultats |
-
-```bash
-GET /api/measures?sensor_id=SENSOR_01&limit=50
-```
-
----
-
-#### `GET /api/last`
-Retourne la dernière mesure connue, enrichie des données météo.
-
-#### `GET /api/all`
-Retourne toutes les mesures sans filtre.
-
-#### `GET /api/weather`
-Retourne les données météo en temps réel (Open-Meteo).
 
 ---
 
@@ -352,11 +372,11 @@ Retourne les données météo en temps réel (Open-Meteo).
 | Méthode | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/rooms` | Liste toutes les salles |
-| `POST` | `/api/rooms` | Crée une nouvelle salle |
+| `POST` | `/api/rooms` | Crée une salle |
 | `GET` | `/api/rooms/<id>` | Détail d'une salle |
-| `PATCH` | `/api/rooms/<id>` | Met à jour une salle |
+| `PATCH` | `/api/rooms/<id>` | Modifie une salle (nom, étage, `sensor_id`...) |
 | `DELETE` | `/api/rooms/<id>` | Supprime une salle |
-| `GET` | `/api/rooms/status` | Statut en temps réel de toutes les salles |
+| `GET` | `/api/rooms/status` | Statut temps réel de toutes les salles |
 
 ---
 
@@ -372,67 +392,201 @@ Retourne les données météo en temps réel (Open-Meteo).
 
 | Méthode | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/reservations` | Liste les réservations |
+| `GET` | `/api/reservations` | Liste les réservations (filtre : `room_id`) |
 | `POST` | `/api/reservations` | Crée une réservation |
 | `DELETE` | `/api/reservations/<id>` | Supprime une réservation |
+
+**Body POST `/api/reservations` :**
+```json
+{
+  "room_id": 4,
+  "user_name": "Tarik",
+  "title": "Cours Python",
+  "start_datetime": "2026-04-30T08:00:00.000Z",
+  "end_datetime": "2026-04-30T10:00:00.000Z",
+  "people_count": 25
+}
+```
+
+> ⚠️ Les datetimes sont stockés et comparés en **UTC**. Le frontend Angular envoie des ISO strings avec `Z` (UTC). Le moteur de chauffage convertit en heure locale Paris pour l'affichage.
 
 ---
 
 ### Chauffage
 
-#### `GET /api/heating/decision/<room_id>`
-Retourne la décision de chauffage pour une salle donnée.
+| Méthode | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/heating/decision` | Décision de chauffage pour **toutes** les salles |
+| `GET` | `/api/heating/state` | État courant des relais par `room_id` |
+| `GET` | `/api/heating/sensor-state?sensor_id=XXX` | État du relais pour un `sensor_id` (utilisé par l'ESP) |
+| `POST` | `/api/heating/trigger` | Force un run immédiat de la boucle |
 
+**Exemple réponse `/api/heating/decision` :**
 ```json
-{
-  "status": "PRECHAUFFAGE",
-  "label": "Préchauffage",
-  "color": "orange",
-  "action": "HEAT_ON",
-  "detail": "18.5°C → 20.0°C — résa dans 45 min (36 min de chauffe)"
-}
+[
+  {
+    "room": "Salle 201",
+    "current_temp": 14.8,
+    "decision": {
+      "status": "PRECHAUFFAGE",
+      "label": "Préchauffage",
+      "color": "orange",
+      "action": "HEAT_ON",
+      "detail": "14.8°C → 20.0°C — résa dans 18 min (86 min de chauffe)"
+    }
+  }
+]
+```
+
+**Exemple réponse `/api/heating/sensor-state?sensor_id=esp8266-cce70f` :**
+```json
+{ "on": true }
 ```
 
 ---
 
 ### Prédiction ML
 
-#### `GET /api/predict`
-Prédit la température future à partir du modèle TFLite embarqué.
+| Méthode | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/predict` | Prédit la température future (modèle TFLite) |
 
 ---
 
-## Logique de chauffage
+## Moteur de chauffage
 
-Le moteur `heating_controller.py` évalue l'état thermique d'une salle en croisant la température courante, la réservation active et la prochaine réservation.
+Le fichier `app/heating_controller.py` évalue l'état thermique d'une salle en croisant :
+- La **température courante** (dernière mesure du capteur associé)
+- La **réservation en cours** (si la salle est occupée maintenant)
+- La **prochaine réservation** (dans les 2 heures à venir)
 
-### États possibles
+### États et transitions
 
-| Status | Label | Couleur | Action | Condition |
+| Status | Label | Couleur | Action GPIO | Condition |
 |---|---|---|---|---|
-| `SURCHAUFFE` | Surchauffe ⚠️ | Rouge | `HEAT_OFF` | Temp > cible + 5°C |
-| `CIBLE_ATTEINTE` | Cible atteinte | Vert | — | Temp ≥ cible − tolérance |
-| `EN_CHAUFFE` | En chauffe | Orange | `HEAT_ON` | Résa en cours, temp insuffisante |
-| `PRECHAUFFAGE` | Préchauffage | Orange | `HEAT_ON` | Résa imminente, délai critique |
-| `ATTENTE` | Chauffe dans X min | Jaune | `WAIT` | Résa imminente, encore du temps |
-| `STANDBY` | Standby | Gris | — | Aucune réservation |
+| `SURCHAUFFE` | Surchauffe ⚠️ | 🔴 Rouge | `HEAT_OFF` | Temp > cible + 5°C |
+| `CIBLE_ATTEINTE` | Cible atteinte | 🟢 Vert | — | Temp ≥ cible − tolérance |
+| `EN_CHAUFFE` | En chauffe | 🟠 Orange | `HEAT_ON` | Résa en cours, temp insuffisante |
+| `PRECHAUFFAGE` | Préchauffage | 🟠 Orange | `HEAT_ON` | Résa imminente, délai critique |
+| `ATTENTE` | Chauffe dans X min | 🟡 Jaune | `WAIT` | Résa imminente, encore du temps |
+| `STANDBY` | Standby | ⚫ Gris | — | Aucune réservation |
 
-### Paramètres du calcul
+### Calcul du préchauffage
 
 ```
-minutes_needed = (TARGET_TEMP - current_temp) / DEG_PER_HOUR × 60
+minutes_needed = ((TARGET_TEMP - current_temp) / DEG_PER_HOUR) × 60
+
+PRECHAUFFAGE si : minutes_until ≤ minutes_needed + 10
+ATTENTE      si : minutes_until  > minutes_needed + 10
 ```
 
-Le préchauffage se déclenche quand :
+### Gestion UTC
+
+Tous les datetimes en base sont stockés en **UTC** (format `2026-04-29T21:00:00.000Z`). La fonction `_parse_dt()` dans `heating_controller.py` normalise chaque datetime avant comparaison :
+
+```python
+def _parse_dt(raw: str) -> datetime:
+    # 1. Remplace 'Z' par '+00:00' pour Python
+    # 2. Localise en UTC si naive
+    # 3. Convertit en heure Paris via to_local()
+    ...
 ```
-minutes_until ≤ minutes_needed + 10
+
+La boucle `run_once()` dans `heating_loop.py` compare en UTC pur avec `replace(start_datetime,'Z','')` côté SQL.
+
+---
+
+## Boucle d'automatisation (Heating Loop)
+
+Fichier : `app/heating_loop.py`
+
+### Fonctionnement
+
+1. **Démarrage** : `start_scheduler()` est appelé depuis `server.py` au lancement de Flask
+2. **Fréquence** : toutes les **5 minutes** via APScheduler (+ run immédiat au démarrage)
+3. **Pour chaque salle** :
+   - Récupère la dernière température (via `sensor_id`)
+   - Cherche la réservation en cours et la prochaine (requêtes UTC-safe)
+   - Appelle `heating_decision()` pour obtenir l'action
+   - Si `HEAT_ON` → active le relais GPIO + sauvegarde dans `relay_state.json`
+   - Si `HEAT_OFF` → désactive le relais GPIO
+
+### GPIO
+
+```python
+# Mapping room_id → broche GPIO BCM (à adapter selon câblage)
+ROOM_PINS = {
+    1: 17,  # Salle 101
+    2: 27,  # Salle 102
+    3: 22,  # Salle 103
+}
+```
+
+Sur une machine sans Raspberry Pi, `RPi.GPIO` est remplacé automatiquement par `app/gpio_mock.py` (aucun changement de code nécessaire).
+
+### État des relais
+
+L'état courant est maintenu en mémoire (`_relay_state: dict[int, bool]`) et persisté dans `data/relay_state.json` après chaque changement. L'ESP interroge cet état via `/api/heating/sensor-state`.
+
+### Commandes de test
+
+```bash
+# Forcer un run immédiat
+curl -X POST http://localhost:5000/api/heating/trigger
+
+# Voir l'état des relais
+curl http://localhost:5000/api/heating/state
+
+# Voir l'état pour un capteur spécifique
+curl "http://localhost:5000/api/heating/sensor-state?sensor_id=esp8266-cce70f"
+```
+
+---
+
+## Firmware ESP8266
+
+Dossier : `sketch_dec16a/`
+
+### Matériel requis
+
+- NodeMCU ESP8266
+- SCD40 (I2C sur D5/D6)
+- Capteur PIR (sur D2)
+
+### Fonctionnement
+
+Toutes les **5 secondes**, l'ESP :
+1. Lit le SCD40 (CO2, température, humidité)
+2. Lit le PIR (mouvement)
+3. **POST** `/api/measures` avec les données
+4. **GET** `/api/heating/sensor-state?sensor_id=XXX` pour connaître l'état du relais
+
+### Mode simulation (FAKE)
+
+Si le SCD40 n'est pas détecté, l'ESP bascule automatiquement en mode simulation :
+
+```cpp
+if (body.indexOf("true") != -1) {
+    fakeTemp += 0.12;  // 🔥 relais ON  → +~1.4°C/min
+} else {
+    fakeTemp -= 0.04;  // ❄️ relais OFF → -~0.5°C/min
+}
+fakeTemp = constrain(fakeTemp, 13.0, 35.0);
+```
+
+Cela permet de valider l'ensemble du pipeline (API → heating loop → GPIO → ESP) sans capteur physique.
+
+### Associer un capteur à une salle
+
+```bash
+sqlite3 data/rate.db "UPDATE rooms SET sensor_id = 'esp8266-cce70f' WHERE id = 4;"
 ```
 
 ---
 
 ## Déploiement Raspberry Pi
 
-Le dossier `pi/` contient tous les fichiers nécessaires. Voir aussi `DEPLOY_PI.md` pour le guide complet.
+Voir aussi : [`DEPLOY_PI.md`](DEPLOY_PI.md)
 
 ### Installation initiale (une seule fois)
 
@@ -444,12 +598,13 @@ bash pi/install.sh
 ```
 
 `install.sh` prend tout en charge :
-- Installation de Nginx
-- Création du virtualenv et installation des dépendances
-- Génération du `.env` avec l'IP de la Pi
-- Installation et activation du service systemd
+- Mise à jour système et installation de Nginx
+- Création du virtualenv et installation des dépendances Python (dont `apscheduler`)
+- Build du frontend Angular
+- Génération automatique du `.env` avec l'IP de la Pi
+- Installation et activation du service systemd (`rate.service`)
 - Configuration du reverse proxy Nginx
-- Vérification finale
+- Vérification finale de l'API
 
 ### Mise à jour après un push
 
@@ -458,61 +613,97 @@ cd /home/pi/RATE
 bash pi/update.sh
 ```
 
-### Accès à l'application
+### Service systemd
 
-```
-http://IP_DE_LA_RASPBERRY_PI
+Le service `rate.service` dans `pi/` doit inclure `Group=gpio` pour l'accès aux broches GPIO :
+
+```ini
+[Service]
+User=pi
+Group=gpio
+WorkingDirectory=/home/pi/RATE
+EnvironmentFile=/home/pi/RATE/.env
+ExecStart=/home/pi/RATE/venv/bin/gunicorn \
+    --bind 127.0.0.1:5000 \
+    --workers 2 \
+    --timeout 60 \
+    server:app
+Restart=always
 ```
 
 ### Architecture de déploiement
 
 ```
 Réseau local
-      │
-  Nginx :80
-  ┌────┴────┐
-/api/*      /*
-  │          │
+     │
+ Nginx :80
+ ┌────┴────┐
+ /api/*    /*
+   │        │
 Flask:5000  Angular dist/
-  │
-SQLite
+   │
+ SQLite + APScheduler
+   │
+ GPIO relais
 ```
 
-Gunicorn écoute sur `127.0.0.1:5000` (non exposé directement).
-Nginx fait le pont depuis le port 80 et route `/api/*` vers Flask et `/*` vers le frontend.
-
-### Commandes utiles sur la Pi
+### Commandes utiles
 
 ```bash
-# Statut des services
+# Statut
 sudo systemctl status rate nginx
 
 # Logs en direct
 sudo journalctl -u rate -f
 tail -f /home/pi/RATE/logs/error.log
 
-# Redémarrage manuel
+# Redémarrage
 sudo systemctl restart rate
+
+# Forcer un cycle de chauffage
+curl -X POST http://localhost/api/heating/trigger
 ```
 
 ---
 
-## Branches et workflow
+## Branches et workflow Git
 
 | Branche | Rôle |
 |---|---|
-| `feature/*` | Développement d'une fonctionnalité |
-| `develop` | Intégration — branche principale de travail |
+| `feature/*` | Développement d'une fonctionnalité isolée |
+| `feat/heating-simulation` | Boucle de chauffage + GPIO + simulation ESP |
+| `develop` | Intégration — branche principale de travail ✅ |
+| `fix-pi` | Correctifs spécifiques Raspberry Pi |
 | `main` | Production stable — merge après validation Pi |
 
-### Workflow recommandé
+### Workflow GitFlow
 
 ```
-feature/* ──► develop ──► validation Raspberry Pi ──► main (tag vX.X.X)
+feat/* ──► develop ──► validation Pi ──► main
+                              │
+                         tag vX.X.X
 ```
 
 ```bash
+# Merger une feature dans develop
+git checkout develop
+git merge feat/ma-feature
+git push origin develop
+
+# Passer en production
+git checkout main
+git merge develop
+git push origin main
+
 # Tagger une version stable
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
+
+---
+
+<div align="center">
+
+Fait avec ❤️ — IoT, Flask, Angular & Raspberry Pi
+
+</div>
