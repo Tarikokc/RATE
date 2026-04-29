@@ -4,6 +4,7 @@ After=network.target
 
 [Service]
 User=customer
+Group=gpio
 WorkingDirectory=/home/customer/Documents/RATE
 EnvironmentFile=/home/customer/Documents/RATE/.env
 

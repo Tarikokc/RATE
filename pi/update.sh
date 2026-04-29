@@ -8,7 +8,7 @@
 set -e
 
 PROJECT_DIR="/home/pi/RATE"
-BRANCH="clean-repo"
+BRANCH="main"
 SERVICE="rate"
 
 echo ""
