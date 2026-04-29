@@ -5,6 +5,5 @@ openmeteo-requests
 requests-cache
 retry-requests
 pytz
-tflite-runtime   
 gunicorn        
 numpy
