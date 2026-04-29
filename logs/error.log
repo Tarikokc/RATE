@@ -53,3 +53,15 @@ sqlite3.OperationalError: database is locked
 [2026-04-29 11:38:52 +0200] [3608] [INFO] Booting worker with pid: 3608
 [2026-04-29 11:38:52 +0200] [3609] [INFO] Booting worker with pid: 3609
 [2026-04-29 11:38:52 +0200] [3607] [INFO] Control socket listening at /home/customer/.gunicorn/gunicorn.ctl
+[2026-04-29 12:31:53 +0200] [3607] [INFO] Handling signal: term
+[2026-04-29 12:31:53 +0200] [3608] [INFO] Worker exiting (pid: 3608)
+[2026-04-29 12:31:53 +0200] [3609] [INFO] Worker exiting (pid: 3609)
+[2026-04-29 12:31:53 +0200] [3607] [INFO] Worker (pid:3608) was sent SIGTERM!
+[2026-04-29 12:31:53 +0200] [3607] [INFO] Worker (pid:3609) was sent SIGTERM!
+[2026-04-29 12:31:53 +0200] [3607] [INFO] Shutting down: Master
+[2026-04-29 12:31:53 +0200] [6845] [INFO] Starting gunicorn 25.3.0
+[2026-04-29 12:31:53 +0200] [6845] [INFO] Listening at: http://127.0.0.1:5000 (6845)
+[2026-04-29 12:31:53 +0200] [6845] [INFO] Using worker: sync
+[2026-04-29 12:31:53 +0200] [6846] [INFO] Booting worker with pid: 6846
+[2026-04-29 12:31:53 +0200] [6847] [INFO] Booting worker with pid: 6847
+[2026-04-29 12:31:54 +0200] [6845] [INFO] Control socket listening at /home/customer/.gunicorn/gunicorn.ctl
